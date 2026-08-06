@@ -58,7 +58,12 @@ suivante.
 ## Option 1 — Render ou Railway (le plus simple)
 
 Ces hébergeurs déploient directement depuis un dépôt Git (GitHub/GitLab) et
-gèrent HTTPS automatiquement.
+gèrent HTTPS automatiquement. Le fichier `render.yaml` fourni utilise
+`env: docker`, c'est-à-dire que Render construit l'application via le
+`Dockerfile` du projet plutôt que de deviner un environnement Python — cela
+évite les problèmes de version Python par défaut trop récente, incompatible
+avec certaines dépendances compilées (rencontré avec `psycopg2` sur Python
+3.14, par exemple).
 
 **Étapes générales (Render) :**
 1. Le code est sur GitHub (voir étape préalable ci-dessus si pas encore fait).

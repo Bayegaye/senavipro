@@ -1,13 +1,15 @@
 # Déploiement "Infrastructure as Code" sur Render (https://render.com).
 # Sur Render : New -> Blueprint -> pointez vers ce dépôt/dossier.
-# Crée automatiquement le service web + une base PostgreSQL gratuite reliés.
+# Crée automatiquement le service web (construit via Dockerfile) + une base
+# PostgreSQL gratuite reliés. Utiliser Docker plutôt que le buildpack Python
+# natif de Render évite les soucis de version Python par défaut trop récente
+# (incompatible avec certaines dépendances compilées).
 services:
   - type: web
     name: senavipro
-    env: python
+    env: docker
+    dockerfilePath: ./Dockerfile
     plan: free
-    buildCommand: pip install -r requirements.txt -r requirements-postgres.txt
-    startCommand: python init_db.py && gunicorn wsgi:app
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -17,11 +19,6 @@ services:
         fromDatabase:
           name: senavipro-db
           property: connectionString
-      # Fixe la version de Python (certains hébergeurs ignorent runtime.txt
-      # et utilisent leur dernière version par défaut, ce qui peut casser des
-      # dépendances compilées trop anciennes).
-      - key: PYTHON_VERSION
-        value: 3.12.7
 
 databases:
   - name: senavipro-db
