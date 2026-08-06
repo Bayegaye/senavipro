@@ -1,4 +1,4 @@
-import csv
+ import csv
 import io
 import os
 from datetime import datetime, date, timedelta
@@ -33,6 +33,21 @@ def _database_uri():
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
+
+
+def _parse_date(value, default=None):
+    """Convertit une chaîne 'YYYY-MM-DD' (ex: venant de request.args) en objet
+    date Python. Nécessaire pour PostgreSQL, qui refuse de comparer une
+    colonne DATE à une chaîne de texte brute (contrairement à SQLite, plus
+    permissif) : sans cette conversion, les filtres par date provoquaient une
+    erreur 500 en production ("operator does not exist: date >= character
+    varying")."""
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return default
 
 
 IS_PRODUCTION = os.environ.get("DATABASE_URL") is not None
@@ -123,6 +138,41 @@ def index():
 
 # ---------- Tableau de bord ----------
 
+def _prix_achat_moyen(product_id):
+    """Coût d'achat moyen pondéré d'un produit, calculé à partir de tous ses
+    achats enregistrés (total acheté / quantité achetée). À défaut d'achat
+    enregistré, utilise le prix d'achat par défaut défini sur le produit.
+    Ainsi le bénéfice reflète le coût réel des marchandises vendues, et non
+    le volume global des achats sur la période."""
+    qte, total = db.session.query(
+        func.coalesce(func.sum(Transaction.quantity), 0.0),
+        func.coalesce(func.sum(Transaction.total), 0.0),
+    ).filter(Transaction.product_id == product_id, Transaction.type == "achat").first()
+    if qte and qte > 0:
+        return total / qte
+    product = db.session.get(Product, product_id)
+    return product.prix_achat_defaut if product else 0.0
+
+
+def _cout_marchandises_vendues(start=None, end=None):
+    """Coût des marchandises vendues (COGS) sur une période : pour chaque
+    produit vendu, quantité vendue × son coût d'achat moyen. C'est ce montant
+    qui est soustrait du chiffre d'affaires pour calculer le bénéfice réel —
+    pas le total des achats de la période, qui peut inclure du stock pas
+    encore vendu."""
+    q = db.session.query(Transaction.product_id, func.sum(Transaction.quantity)).filter(
+        Transaction.type == "vente"
+    )
+    if start:
+        q = q.filter(Transaction.date >= start)
+    if end:
+        q = q.filter(Transaction.date <= end)
+    total_cout = 0.0
+    for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
+        total_cout += (qte_vendue or 0.0) * _prix_achat_moyen(product_id)
+    return total_cout
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -147,9 +197,11 @@ def dashboard():
 
     ventes_mois = sum_total("vente", start_month, today)
     achats_mois = sum_total("achat", start_month, today)
+    cout_vendu_mois = _cout_marchandises_vendues(start_month, today)
     depenses_mois = sum_expenses(start_month, today)
     ventes_jour = sum_total("vente", today, today)
     achats_jour = sum_total("achat", today, today)
+    cout_vendu_jour = _cout_marchandises_vendues(today, today)
     depenses_jour = sum_expenses(today, today)
 
     produits = Product.query.order_by(Product.name).all()
@@ -162,12 +214,14 @@ def dashboard():
         "dashboard.html",
         ventes_mois=ventes_mois,
         achats_mois=achats_mois,
+        cout_vendu_mois=cout_vendu_mois,
         depenses_mois=depenses_mois,
-        benefice_mois=ventes_mois - achats_mois - depenses_mois,
+        benefice_mois=ventes_mois - cout_vendu_mois - depenses_mois,
         ventes_jour=ventes_jour,
         achats_jour=achats_jour,
+        cout_vendu_jour=cout_vendu_jour,
         depenses_jour=depenses_jour,
-        benefice_jour=ventes_jour - achats_jour - depenses_jour,
+        benefice_jour=ventes_jour - cout_vendu_jour - depenses_jour,
         produits=produits,
         dernieres_transactions=dernieres_transactions,
         alertes_stock=alertes_stock,
@@ -180,8 +234,8 @@ def _list_transactions(type_):
     q = Transaction.query.filter_by(type=type_)
     product_id = request.args.get("product_id", type=int)
     partner_id = request.args.get("partner_id", type=int)
-    date_debut = request.args.get("date_debut")
-    date_fin = request.args.get("date_fin")
+    date_debut = _parse_date(request.args.get("date_debut"))
+    date_fin = _parse_date(request.args.get("date_fin"))
 
     if product_id:
         q = q.filter(Transaction.product_id == product_id)
@@ -421,8 +475,8 @@ def depenses():
         return redirect(url_for("depenses"))
 
     q = Expense.query
-    date_debut = request.args.get("date_debut")
-    date_fin = request.args.get("date_fin")
+    date_debut = _parse_date(request.args.get("date_debut"))
+    date_fin = _parse_date(request.args.get("date_fin"))
     if date_debut:
         q = q.filter(Expense.date >= date_debut)
     if date_fin:
@@ -534,8 +588,8 @@ def supprimer_partenaire(type_, pid):
 @app.route("/rapports")
 @login_required
 def rapports():
-    date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
-    date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
+    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
 
     base_q = Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
 
@@ -588,15 +642,43 @@ def rapports():
         .all()
     )
 
+    # Coût des marchandises vendues et marge, par produit : le bénéfice se
+    # calcule sur les quantités effectivement vendues, au prix d'achat réel
+    # de ces marchandises — pas sur le volume total des achats de la période.
+    cout_vendu_total = 0.0
+    marges_par_produit = []
+    ventes_par_produit = (
+        db.session.query(
+            Product.id, Product.name, Product.unit,
+            func.sum(Transaction.quantity), func.sum(Transaction.total)
+        )
+        .join(Product, Product.id == Transaction.product_id)
+        .filter(Transaction.type == "vente", Transaction.date >= date_debut, Transaction.date <= date_fin)
+        .group_by(Product.id, Product.name, Product.unit)
+        .order_by(Product.name)
+        .all()
+    )
+    for pid, name, unit, qte_vendue, total_vente in ventes_par_produit:
+        cout_unitaire = _prix_achat_moyen(pid)
+        cout_total = (qte_vendue or 0.0) * cout_unitaire
+        cout_vendu_total += cout_total
+        marges_par_produit.append({
+            "name": name, "unit": unit, "qte": qte_vendue,
+            "ventes": total_vente, "cout_unitaire": cout_unitaire,
+            "cout_total": cout_total, "marge": total_vente - cout_total,
+        })
+
     return render_template(
         "rapports.html",
         date_debut=date_debut,
         date_fin=date_fin,
         ventes_total=ventes_total,
         achats_total=achats_total,
+        cout_vendu_total=cout_vendu_total,
         depenses_total=depenses_total,
-        benefice=ventes_total - achats_total - depenses_total,
+        benefice=ventes_total - cout_vendu_total - depenses_total,
         par_produit=par_produit,
+        marges_par_produit=marges_par_produit,
         par_categorie_depense=par_categorie_depense,
         labels=labels,
         ventes_par_jour=[ventes_par_jour[d] for d in labels],
@@ -607,8 +689,8 @@ def rapports():
 @app.route("/rapports/export.csv")
 @login_required
 def export_csv():
-    date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
-    date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
+    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
     transactions = (
         Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
         .order_by(Transaction.date)
@@ -634,8 +716,8 @@ def export_csv():
 @app.route("/depenses/export.csv")
 @login_required
 def export_depenses_csv():
-    date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
-    date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
+    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
     depenses = (
         Expense.query.filter(Expense.date >= date_debut, Expense.date <= date_fin)
         .order_by(Expense.date)
@@ -679,22 +761,4 @@ def utilisateurs():
             flash("Utilisateur créé.", "success")
         return redirect(url_for("utilisateurs"))
 
-    liste = User.query.order_by(User.username).all()
-    return render_template("utilisateurs.html", liste=liste)
-
-
-@app.route("/utilisateurs/<int:uid>/toggle", methods=["POST"])
-@login_required
-@admin_required
-def toggle_utilisateur(uid):
-    u = db.session.get(User, uid)
-    if u and u.id != current_user.id:
-        u.active = not u.active
-        db.session.commit()
-    return redirect(url_for("utilisateurs"))
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(debug=debug, host="0.0.0.0", port=port)
+    liste = User.query.order_by(User.username).all()   
