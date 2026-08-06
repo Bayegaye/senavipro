@@ -29,8 +29,8 @@
   </div>
   <div class="col-md-3">
     <div class="card card-stat p-3">
-      <div class="text-muted small">Achats marchandises</div>
-      <div class="stat-value text-danger">{{ '%.0f'|format(achats_total) }} FCFA</div>
+      <div class="text-muted small">Coût des marchandises vendues</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(cout_vendu_total) }} FCFA</div>
     </div>
   </div>
   <div class="col-md-3">
@@ -46,6 +46,12 @@
     </div>
   </div>
 </div>
+<p class="text-muted small mb-4">
+  Le bénéfice réel se calcule sur le coût des marchandises effectivement <strong>vendues</strong>
+  (quantité vendue × prix d'achat moyen de chaque produit), pas sur le volume total des achats de
+  la période — un achat de stock pas encore vendu n'impacte donc pas le bénéfice.
+  Total des achats de la période (indicatif, trésorerie) : <strong>{{ '%.0f'|format(achats_total) }} FCFA</strong>.
+</p>
 
 <div class="row g-3">
   <div class="col-lg-7">
@@ -69,6 +75,25 @@
           </tr>
         {% else %}
           <tr><td colspan="4" class="text-muted">Aucune donnée sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="card card-stat p-3 mb-3">
+      <h5>Marge par produit vendu</h5>
+      <table class="table table-sm">
+        <thead><tr><th>Produit</th><th>Qté vendue</th><th>Ventes</th><th>Coût</th><th>Marge</th></tr></thead>
+        <tbody>
+        {% for m in marges_par_produit %}
+          <tr>
+            <td>{{ m.name }}</td>
+            <td>{{ '%.0f'|format(m.qte) }} {{ m.unit }}</td>
+            <td>{{ '%.0f'|format(m.ventes) }}</td>
+            <td>{{ '%.0f'|format(m.cout_total) }}</td>
+            <td class="{% if m.marge >= 0 %}text-success{% else %}text-danger{% endif %}"><strong>{{ '%.0f'|format(m.marge) }}</strong></td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted">Aucune vente sur cette période.</td></tr>
         {% endfor %}
         </tbody>
       </table>
