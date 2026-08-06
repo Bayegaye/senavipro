@@ -19,7 +19,7 @@
             <input type="hidden" name="product_id" value="{{ p.id }}">
             <input type="number" step="any" name="nouveau_stock" class="form-control form-control-sm" style="width:110px" value="{{ p.stock }}" placeholder="Stock">
             <input type="number" step="any" name="seuil_alerte" class="form-control form-control-sm" style="width:110px" value="{{ p.seuil_alerte }}" placeholder="Seuil">
-            <button class="btn btn-sm btn-outline-success">Mettre à jour</button>
+            <button class="btn btn-sm btn-outline-success" title="Enregistrer">✏️ Mettre à jour</button>
           </form>
         </td>
         {% endif %}
