@@ -1,8 +1,12 @@
 # Pilote PostgreSQL — requis UNIQUEMENT pour un hébergement en ligne avec
 # PostgreSQL (voir DEPLOIEMENT.md). Ne pas installer pour un usage local
-# avec SQLite : ce paquet nécessite une compilation qui échoue sur Windows
-# sans les "Microsoft C++ Build Tools".
+# avec SQLite.
+#
+# psycopg (v3) est utilisé plutôt que psycopg2 : il fournit des roues
+# précompilées à jour pour les versions récentes de Python (contrairement à
+# psycopg2-binary, ancien et incompatible avec Python 3.13+ sur certains
+# hébergeurs qui utilisent la dernière version de Python par défaut).
 #
 # Installation (sur le serveur/hébergeur uniquement) :
 #   pip install -r requirements.txt -r requirements-postgres.txt
-psycopg2-binary==2.9.9
+psycopg[binary]>=3.2,<4

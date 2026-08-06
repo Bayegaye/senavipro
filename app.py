@@ -19,15 +19,19 @@ APP_NAME = "SENAVIPRO"
 
 
 def _database_uri():
-    """Lit DATABASE_URL (fourni par la plupart des hébergeurs pour Postgres/MySQL).
+    """Lit DATABASE_URL (fourni par la plupart des hébergeurs pour Postgres).
     À défaut, utilise un fichier SQLite local — pratique pour l'usage local/hors ligne.
     Certains hébergeurs (Render, Railway, Heroku) fournissent une URL commençant
-    par 'postgres://', que SQLAlchemy exige sous la forme 'postgresql://'."""
+    par 'postgres://' ou 'postgresql://' ; on la convertit vers le dialecte
+    'postgresql+psycopg://' pour utiliser le pilote psycopg (v3, voir
+    requirements-postgres.txt) plutôt que psycopg2 par défaut."""
     url = os.environ.get("DATABASE_URL")
     if not url:
         return "sqlite:///senavipro.db"
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
+    if url.startswith("postgresql://"):
+        url = url.replace("postgresql://", "postgresql+psycopg://", 1)
     return url
 
 

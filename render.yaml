@@ -17,6 +17,11 @@ services:
         fromDatabase:
           name: senavipro-db
           property: connectionString
+      # Fixe la version de Python (certains hébergeurs ignorent runtime.txt
+      # et utilisent leur dernière version par défaut, ce qui peut casser des
+      # dépendances compilées trop anciennes).
+      - key: PYTHON_VERSION
+        value: 3.12.7
 
 databases:
   - name: senavipro-db

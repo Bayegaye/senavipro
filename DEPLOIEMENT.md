@@ -33,26 +33,53 @@ est persistant.
 
 ---
 
+## Étape préalable — mettre le code sur GitHub (si ce n'est pas déjà fait)
+
+Render (comme Railway) déploie depuis un dépôt Git. Si vous n'avez pas encore
+de compte GitHub ni de dépôt, voici le chemin le plus simple, sans avoir
+besoin d'installer Git :
+
+1. Créez un compte sur [github.com](https://github.com/join) (gratuit).
+2. Une fois connecté, cliquez sur le **+** en haut à droite → **New repository**.
+   Nom : `senavipro` (ou autre), visibilité **Private** conseillée, ne cochez
+   aucune case d'initialisation (pas de README). Cliquez **Create repository**.
+3. Sur la page du dépôt vide, cliquez le lien **uploading an existing file**.
+4. Extrayez le zip SENAVIPRO sur votre ordinateur si ce n'est pas déjà fait,
+   puis **glissez-déposez tout le contenu du dossier extrait** (pas le
+   dossier lui-même, son contenu : `app.py`, `templates/`, `static/`,
+   `render.yaml`, etc.) dans la zone d'upload de GitHub. Les navigateurs
+   récents (Chrome, Edge) acceptent de glisser des sous-dossiers entiers.
+5. En bas de page, ajoutez un message (ex. "Version initiale") et cliquez
+   **Commit changes**.
+
+Votre code est maintenant sur GitHub, prêt à être relié à Render à l'étape
+suivante.
+
 ## Option 1 — Render ou Railway (le plus simple)
 
 Ces hébergeurs déploient directement depuis un dépôt Git (GitHub/GitLab) et
 gèrent HTTPS automatiquement.
 
 **Étapes générales (Render) :**
-1. Poussez ce dossier dans un dépôt Git (GitHub par exemple).
-2. Sur [render.com](https://render.com) : *New* → *Blueprint*, sélectionnez
-   le dépôt. Le fichier `render.yaml` fourni configure automatiquement le
+1. Le code est sur GitHub (voir étape préalable ci-dessus si pas encore fait).
+2. Créez un compte sur [render.com](https://render.com) — vous pouvez vous
+   inscrire directement avec votre compte GitHub, ce qui simplifie l'étape
+   suivante.
+3. Dans le tableau de bord Render : **New** → **Blueprint**. Autorisez Render
+   à accéder à votre compte GitHub si demandé, puis sélectionnez le dépôt
+   `senavipro`. Le fichier `render.yaml` fourni configure automatiquement le
    service web et une base PostgreSQL gratuite reliés entre eux.
-   - Sans Blueprint : *New* → *Web Service*, build command
+   - Sans Blueprint : **New** → **Web Service**, build command
      `pip install -r requirements.txt -r requirements-postgres.txt`, start command
      `python init_db.py && gunicorn wsgi:app`.
-3. Render vous demandera de définir `ADMIN_PASSWORD` (variable marquée
+4. Render vous demandera de définir `ADMIN_PASSWORD` (variable marquée
    `sync: false`) — indiquez un mot de passe fort.
-4. Ajoutez une base PostgreSQL (*New* → *PostgreSQL*) si vous n'utilisez pas
-   le Blueprint, et reliez sa `Connection String` à la variable
+5. Sans Blueprint uniquement : ajoutez une base PostgreSQL (**New** →
+   **PostgreSQL**), et reliez sa `Connection String` à la variable
    `DATABASE_URL` du service web.
-5. Déployez. L'URL fournie par Render (`https://votre-app.onrender.com`) est
-   accessible publiquement, en HTTPS automatiquement.
+6. Cliquez **Apply** / **Create Web Service**. Le premier déploiement prend
+   quelques minutes. L'URL fournie par Render (`https://senavipro.onrender.com`
+   ou similaire) est accessible publiquement, en HTTPS automatiquement.
 
 **Railway** fonctionne de façon similaire : *New Project* → *Deploy from
 GitHub repo*, ajoutez un service PostgreSQL depuis le catalogue (Railway
