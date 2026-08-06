@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Dépenses{% endblock %}
+{% block content %}
+<h3 class="mb-4">Dépenses générales</h3>
+<p class="text-muted">Frais de fonctionnement (aliment, vétérinaire, transport, salaires...) — distincts des achats de marchandises, pour calculer le bénéfice réel.</p>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-stat p-3">
+      <h5>Nouvelle dépense</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Catégorie</label>
+          <input type="text" name="category" class="form-control" list="categories-list" required>
+          <datalist id="categories-list">
+            {% for c in categories %}
+              <option value="{{ c }}">
+            {% endfor %}
+          </datalist>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Description (optionnel)</label>
+          <input type="text" name="description" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Montant (FCFA)</label>
+          <input type="number" step="any" min="0.01" name="amount" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" value="{{ today }}" required>
+        </div>
+        <button type="submit" class="btn btn-danger w-100">Enregistrer la dépense</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card card-stat p-3">
+      <form method="GET" class="row g-2 mb-3">
+        <div class="col-md-4">
+          <input type="date" name="date_debut" class="form-control form-control-sm" value="{{ request.args.get('date_debut','') }}">
+        </div>
+        <div class="col-md-4">
+          <input type="date" name="date_fin" class="form-control form-control-sm" value="{{ request.args.get('date_fin','') }}">
+        </div>
+        <div class="col-md-2">
+          <button class="btn btn-outline-secondary btn-sm w-100" type="submit">Filtrer</button>
+        </div>
+        <div class="col-md-2">
+          <a class="btn btn-outline-success btn-sm w-100" href="{{ url_for('export_depenses_csv', date_debut=request.args.get('date_debut',''), date_fin=request.args.get('date_fin','')) }}">Exporter CSV</a>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr><th>Date</th><th>Catégorie</th><th>Description</th><th>Montant</th><th>Par</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr>
+        </thead>
+        <tbody>
+        {% for e in liste %}
+          <tr>
+            <td>{{ e.date.strftime('%d/%m/%Y') }}</td>
+            <td><span class="badge bg-secondary">{{ e.category }}</span></td>
+            <td>{{ e.description or '—' }}</td>
+            <td><strong>{{ '%.0f'|format(e.amount) }}</strong> FCFA</td>
+            <td class="text-muted small">{{ e.user.full_name if e.user else '' }}</td>
+            {% if current_user.is_admin %}
+            <td>
+              <form method="POST" action="{{ url_for('supprimer_depense', eid=e.id) }}" onsubmit="return confirm('Supprimer cette dépense ?');">
+                <button class="btn btn-sm btn-outline-danger">✕</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="6" class="text-muted">Aucune dépense enregistrée.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if liste %}
+        <tfoot>
+          <tr class="table-light">
+            <th colspan="3" class="text-end">Total :</th>
+            <th>{{ '%.0f'|format(liste|sum(attribute='amount')) }} FCFA</th>
+            <th colspan="2"></th>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

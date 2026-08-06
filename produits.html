@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Produits{% endblock %}
+{% block content %}
+<h3 class="mb-4">Produits</h3>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-stat p-3">
+      <h5>Ajouter un produit</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Nom</label>
+          <input type="text" name="name" class="form-control" placeholder="ex: Oeufs extra, Poulets locaux..." required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Unité</label>
+          <input type="text" name="unit" class="form-control" placeholder="ex: plateau, unite, kg, carton" required>
+        </div>
+        <div class="row">
+          <div class="col-6 mb-2">
+            <label class="form-label">Stock initial</label>
+            <input type="number" step="any" name="stock_initial" class="form-control" value="0">
+          </div>
+          <div class="col-6 mb-2">
+            <label class="form-label">Seuil d'alerte</label>
+            <input type="number" step="any" name="seuil_alerte" class="form-control" value="0">
+          </div>
+        </div>
+        <div class="row">
+          <div class="col-6 mb-2">
+            <label class="form-label">Prix de vente par défaut</label>
+            <input type="number" step="any" name="prix_vente_defaut" class="form-control" value="0">
+          </div>
+          <div class="col-6 mb-3">
+            <label class="form-label">Prix d'achat par défaut</label>
+            <input type="number" step="any" name="prix_achat_defaut" class="form-control" value="0">
+          </div>
+        </div>
+        <button type="submit" class="btn btn-success w-100">Ajouter le produit</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card card-stat p-3">
+      <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th>Nom</th><th>Unité</th><th>Stock</th><th>Seuil</th>
+            <th>Prix vente</th><th>Prix achat</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for p in liste %}
+          <tr>
+            <td><input type="text" name="name" value="{{ p.name }}" form="edit-{{ p.id }}" class="form-control form-control-sm"></td>
+            <td><input type="text" name="unit" value="{{ p.unit }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="width:90px"></td>
+            <td>{{ '%.0f'|format(p.stock) }}</td>
+            <td><input type="number" step="any" name="seuil_alerte" value="{{ p.seuil_alerte }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="width:80px"></td>
+            <td><input type="number" step="any" name="prix_vente_defaut" value="{{ p.prix_vente_defaut }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="width:100px"></td>
+            <td><input type="number" step="any" name="prix_achat_defaut" value="{{ p.prix_achat_defaut }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="width:100px"></td>
+            <td class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ p.id }}">Enregistrer</button>
+              <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ p.id }}">✕</button>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted">Aucun produit.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+      <p class="text-muted small mb-0">Le stock se modifie depuis la page "Stock". La suppression n'est possible que si le produit n'a aucune transaction et un stock à zéro.</p>
+    </div>
+  </div>
+</div>
+
+{% for p in liste %}
+<form id="edit-{{ p.id }}" method="POST" action="{{ url_for('modifier_produit', pid=p.id) }}"></form>
+<form id="del-{{ p.id }}" method="POST" action="{{ url_for('supprimer_produit', pid=p.id) }}" onsubmit="return confirm('Supprimer ce produit ?');"></form>
+{% endfor %}
+{% endblock %}

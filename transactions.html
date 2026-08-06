@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}{{ titre }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>{{ titre }}</h3>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-stat p-3">
+      <h5>{% if type_=='vente' %}Nouvelle vente{% else %}Nouvel achat{% endif %}</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Produit</label>
+          <select name="product_id" id="product_id" class="form-select" required>
+            {% for p in produits %}
+              <option value="{{ p.id }}" data-price="{{ p.prix_vente_defaut if type_=='vente' else p.prix_achat_defaut }}">{{ p.name }} (stock: {{ '%.0f'|format(p.stock) }} {{ p.unit }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">{{ 'Client' if type_=='vente' else 'Fournisseur' }} (optionnel)</label>
+          <select name="partner_id" class="form-select">
+            <option value="">— Non spécifié —</option>
+            {% for pa in partenaires %}
+              <option value="{{ pa.id }}">{{ pa.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row">
+          <div class="col-6 mb-2">
+            <label class="form-label">Quantité</label>
+            <input type="number" step="any" min="0.01" name="quantity" class="form-control" required>
+          </div>
+          <div class="col-6 mb-2">
+            <label class="form-label">Prix unitaire (FCFA)</label>
+            <input type="number" step="any" min="0" name="unit_price" id="unit_price" class="form-control" required>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" value="{{ today }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note (optionnel)</label>
+          <input type="text" name="note" class="form-control">
+        </div>
+        <button type="submit" class="btn {% if type_=='vente' %}btn-success{% else %}btn-danger{% endif %} w-100">
+          Enregistrer {{ 'la vente' if type_=='vente' else "l'achat" }}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card card-stat p-3">
+      <form method="GET" class="row g-2 mb-3">
+        <div class="col-md-3">
+          <select name="product_id" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="">Tous les produits</option>
+            {% for p in produits %}
+              <option value="{{ p.id }}" {% if request.args.get('product_id')==p.id|string %}selected{% endif %}>{{ p.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-md-3">
+          <input type="date" name="date_debut" class="form-control form-control-sm" value="{{ request.args.get('date_debut','') }}">
+        </div>
+        <div class="col-md-3">
+          <input type="date" name="date_fin" class="form-control form-control-sm" value="{{ request.args.get('date_fin','') }}">
+        </div>
+        <div class="col-md-3">
+          <button class="btn btn-outline-secondary btn-sm w-100" type="submit">Filtrer</button>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Date</th><th>Produit</th><th>{{ 'Client' if type_=='vente' else 'Fournisseur' }}</th>
+            <th>Qté</th><th>P.U.</th><th>Total</th><th>Par</th>
+            {% if current_user.is_admin %}<th></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+        {% for t in transactions %}
+          <tr>
+            <td>{{ t.date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ t.product.name }}</td>
+            <td>{{ t.partner.name if t.partner else '—' }}</td>
+            <td>{{ '%.0f'|format(t.quantity) }}</td>
+            <td>{{ '%.0f'|format(t.unit_price) }}</td>
+            <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
+            <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
+            {% if current_user.is_admin %}
+            <td>
+              <form method="POST" action="{{ url_for('supprimer_transaction', tid=t.id) }}" onsubmit="return confirm('Supprimer cette transaction ?');">
+                <button class="btn btn-sm btn-outline-danger">✕</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="8" class="text-muted">Aucune transaction.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if transactions %}
+        <tfoot>
+          <tr class="table-light">
+            <th colspan="5" class="text-end">Total :</th>
+            <th>{{ '%.0f'|format(transactions|sum(attribute='total')) }} FCFA</th>
+            <th colspan="2"></th>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var productSelect = document.getElementById('product_id');
+  var priceInput = document.getElementById('unit_price');
+  function fillPrice() {
+    var opt = productSelect.options[productSelect.selectedIndex];
+    var price = opt ? opt.getAttribute('data-price') : null;
+    if (price && parseFloat(price) > 0 && !priceInput.value) {
+      priceInput.value = price;
+    }
+  }
+  if (productSelect && priceInput) {
+    productSelect.addEventListener('change', function () {
+      var opt = productSelect.options[productSelect.selectedIndex];
+      var price = opt ? opt.getAttribute('data-price') : null;
+      if (price && parseFloat(price) > 0) {
+        priceInput.value = price;
+      }
+    });
+    fillPrice();
+  }
+});
+</script>
+{% endblock %}

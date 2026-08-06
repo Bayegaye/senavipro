@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}{{ titre }}{% endblock %}
+{% block content %}
+<h3 class="mb-4">{{ titre }}</h3>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-stat p-3">
+      <h5>Ajouter {{ 'un client' if type_=='client' else 'un fournisseur' }}</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Nom</label>
+          <input type="text" name="name" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Téléphone</label>
+          <input type="text" name="phone" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Adresse</label>
+          <input type="text" name="address" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note</label>
+          <input type="text" name="note" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-success w-100">Ajouter</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card card-stat p-3">
+      <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Nom</th><th>Téléphone</th><th>Adresse</th><th>Total transactions</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr></thead>
+        <tbody>
+        {% for p in liste %}
+          <tr>
+            <td>{{ p.name }}</td>
+            <td>{{ p.phone or '—' }}</td>
+            <td>{{ p.address or '—' }}</td>
+            <td>{{ '%.0f'|format(stats.get(p.id, 0)) }} FCFA</td>
+            {% if current_user.is_admin %}
+            <td>
+              <form method="POST" action="{{ url_for('supprimer_partenaire', type_=type_, pid=p.id) }}" onsubmit="return confirm('Supprimer ?');">
+                <button class="btn btn-sm btn-outline-danger">✕</button>
+              </form>
+            </td>
+            {% endif %}
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted">Aucun enregistrement.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

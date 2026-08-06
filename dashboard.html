@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Tableau de bord{% endblock %}
+{% block content %}
+<h3 class="mb-4">Tableau de bord</h3>
+
+{% if alertes_stock %}
+<div class="alert alert-warning">
+  <strong>⚠ Stock bas :</strong>
+  {% for p in alertes_stock %}{{ p.name }} ({{ '%.0f'|format(p.stock) }} {{ p.unit }}){% if not loop.last %}, {% endif %}{% endfor %}
+</div>
+{% endif %}
+
+<h6 class="text-muted text-uppercase small mb-2">Aujourd'hui</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Chiffre d'affaires du jour</div>
+      <div class="stat-value text-success">{{ '%.0f'|format(ventes_jour) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Achats marchandises</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(achats_jour) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Dépenses générales</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(depenses_jour) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Bénéfice réel du jour</div>
+      <div class="stat-value {% if benefice_jour >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(benefice_jour) }} FCFA</div>
+    </div>
+  </div>
+</div>
+
+<h6 class="text-muted text-uppercase small mb-2">Ce mois-ci</h6>
+<div class="row g-3 mb-4">
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Chiffre d'affaires du mois</div>
+      <div class="stat-value text-success">{{ '%.0f'|format(ventes_mois) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Achats marchandises</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(achats_mois) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Dépenses générales</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(depenses_mois) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Bénéfice réel du mois</div>
+      <div class="stat-value {% if benefice_mois >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(benefice_mois) }} FCFA</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <div class="col-md-5">
+    <div class="card card-stat p-3">
+      <h5>Stock actuel</h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Produit</th><th>Stock</th><th>Unité</th></tr></thead>
+        <tbody>
+        {% for p in produits %}
+          <tr class="{% if p.stock <= p.seuil_alerte %}table-warning{% endif %}">
+            <td>{{ p.name }}</td>
+            <td>{{ '%.0f'|format(p.stock) }}</td>
+            <td>{{ p.unit }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-md-7">
+    <div class="card card-stat p-3">
+      <h5>Dernières transactions</h5>
+      <table class="table table-sm mb-0">
+        <thead><tr><th>Date</th><th>Type</th><th>Produit</th><th>Qté</th><th>Total</th></tr></thead>
+        <tbody>
+        {% for t in dernieres_transactions %}
+          <tr>
+            <td>{{ t.date.strftime('%d/%m/%Y') }}</td>
+            <td><span class="badge {% if t.type=='vente' %}bg-success{% else %}bg-danger{% endif %}">{{ t.type }}</span></td>
+            <td>{{ t.product.name }}</td>
+            <td>{{ '%.0f'|format(t.quantity) }}</td>
+            <td>{{ '%.0f'|format(t.total) }} FCFA</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted">Aucune transaction pour le moment.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
