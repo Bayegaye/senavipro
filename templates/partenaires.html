@@ -31,24 +31,30 @@
     <div class="card card-stat p-3">
       <div class="table-responsive">
       <table class="table table-hover align-middle">
-        <thead><tr><th>Nom</th><th>Téléphone</th><th>Adresse</th><th>Total transactions</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr></thead>
+        <thead><tr><th>Nom</th><th>Téléphone</th><th>Adresse</th><th>Note</th><th>Total transactions</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr></thead>
         <tbody>
         {% for p in liste %}
           <tr>
+            {% if current_user.is_admin %}
+            <td><input type="text" name="name" value="{{ p.name }}" form="edit-{{ p.id }}" class="form-control form-control-sm" required></td>
+            <td><input type="text" name="phone" value="{{ p.phone or '' }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="min-width:110px"></td>
+            <td><input type="text" name="address" value="{{ p.address or '' }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="min-width:140px"></td>
+            <td><input type="text" name="note" value="{{ p.note or '' }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="min-width:120px"></td>
+            <td>{{ '%.0f'|format(stats.get(p.id, 0)) }} FCFA</td>
+            <td class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ p.id }}" title="Enregistrer">✏️</button>
+              <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ p.id }}" title="Supprimer">✕</button>
+            </td>
+            {% else %}
             <td>{{ p.name }}</td>
             <td>{{ p.phone or '—' }}</td>
             <td>{{ p.address or '—' }}</td>
+            <td>{{ p.note or '—' }}</td>
             <td>{{ '%.0f'|format(stats.get(p.id, 0)) }} FCFA</td>
-            {% if current_user.is_admin %}
-            <td>
-              <form method="POST" action="{{ url_for('supprimer_partenaire', type_=type_, pid=p.id) }}" onsubmit="return confirm('Supprimer ?');">
-                <button class="btn btn-sm btn-outline-danger">✕</button>
-              </form>
-            </td>
             {% endif %}
           </tr>
         {% else %}
-          <tr><td colspan="5" class="text-muted">Aucun enregistrement.</td></tr>
+          <tr><td colspan="6" class="text-muted">Aucun enregistrement.</td></tr>
         {% endfor %}
         </tbody>
       </table>
@@ -56,4 +62,11 @@
     </div>
   </div>
 </div>
+
+{% if current_user.is_admin %}
+{% for p in liste %}
+<form id="edit-{{ p.id }}" method="POST" action="{{ url_for('modifier_partenaire', type_=type_, pid=p.id) }}"></form>
+<form id="del-{{ p.id }}" method="POST" action="{{ url_for('supprimer_partenaire', type_=type_, pid=p.id) }}" onsubmit="return confirm('Supprimer ?');"></form>
+{% endfor %}
+{% endif %}
 {% endblock %}
