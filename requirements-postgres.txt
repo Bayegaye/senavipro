@@ -1,0 +1,8 @@
+# Pilote PostgreSQL — requis UNIQUEMENT pour un hébergement en ligne avec
+# PostgreSQL (voir DEPLOIEMENT.md). Ne pas installer pour un usage local
+# avec SQLite : ce paquet nécessite une compilation qui échoue sur Windows
+# sans les "Microsoft C++ Build Tools".
+#
+# Installation (sur le serveur/hébergeur uniquement) :
+#   pip install -r requirements.txt -r requirements-postgres.txt
+psycopg2-binary==2.9.9

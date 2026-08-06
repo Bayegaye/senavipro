@@ -1,0 +1,23 @@
+# Déploiement "Infrastructure as Code" sur Render (https://render.com).
+# Sur Render : New -> Blueprint -> pointez vers ce dépôt/dossier.
+# Crée automatiquement le service web + une base PostgreSQL gratuite reliés.
+services:
+  - type: web
+    name: senavipro
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt -r requirements-postgres.txt
+    startCommand: python init_db.py && gunicorn wsgi:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: senavipro-db
+          property: connectionString
+
+databases:
+  - name: senavipro-db
+    plan: free

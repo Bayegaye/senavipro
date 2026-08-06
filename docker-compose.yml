@@ -1,0 +1,29 @@
+# Déploiement local ou sur un serveur (VPS) avec PostgreSQL.
+# Démarrage : docker compose up -d --build
+# Application accessible sur http://<adresse-du-serveur>:5000
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      SECRET_KEY: "changez-moi-avec-une-valeur-secrete-aleatoire"
+      DATABASE_URL: "postgresql://senavipro:senavipro@db:5432/senavipro"
+      ADMIN_PASSWORD: "changez-ce-mot-de-passe"
+      PORT: "5000"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: senavipro
+      POSTGRES_PASSWORD: senavipro
+      POSTGRES_DB: senavipro
+    volumes:
+      - senavipro_db_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  senavipro_db_data:
