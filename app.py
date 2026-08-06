@@ -1,4 +1,4 @@
- import csv
+import csv
 import io
 import os
 from datetime import datetime, date, timedelta
@@ -761,4 +761,22 @@ def utilisateurs():
             flash("Utilisateur créé.", "success")
         return redirect(url_for("utilisateurs"))
 
-    liste = User.query.order_by(User.username).all()   
+    liste = User.query.order_by(User.username).all()
+    return render_template("utilisateurs.html", liste=liste)
+
+
+@app.route("/utilisateurs/<int:uid>/toggle", methods=["POST"])
+@login_required
+@admin_required
+def toggle_utilisateur(uid):
+    u = db.session.get(User, uid)
+    if u and u.id != current_user.id:
+        u.active = not u.active
+        db.session.commit()
+    return redirect(url_for("utilisateurs"))
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
+    app.run(debug=debug, host="0.0.0.0", port=port) 
