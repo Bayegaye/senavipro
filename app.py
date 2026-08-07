@@ -189,6 +189,25 @@ def _stock_disponible(product, exclude_order_id=None):
     return product.stock - _stock_reserve(product.id, exclude_order_id=exclude_order_id)
 
 
+def _get_or_create_client(name):
+    """Retrouve un client existant par son nom (insensible à la casse) ou en
+    crée un nouveau à la volée — permet de saisir directement le nom du
+    client lors d'une vente ou d'une commande, sans passer par la page
+    Clients. Ne fait pas de commit : à intégrer dans la transaction en cours."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    client = Partner.query.filter(
+        Partner.type == "client", func.lower(Partner.name) == name.lower()
+    ).first()
+    if client:
+        return client
+    client = Partner(name=name, type="client")
+    db.session.add(client)
+    db.session.flush()  # obtenir client.id sans commit prématuré
+    return client
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -270,7 +289,6 @@ def _create_transaction(type_):
         product_id = int(request.form["product_id"])
         quantity = float(request.form["quantity"])
         unit_price = float(request.form["unit_price"])
-        partner_id = request.form.get("partner_id") or None
         tdate = request.form.get("date") or date.today().isoformat()
         note = request.form.get("note", "").strip()
     except (KeyError, ValueError):
@@ -293,10 +311,20 @@ def _create_transaction(type_):
         )
         return
 
+    if type_ == "vente":
+        # Le client est saisi directement au clavier (avec suggestions) :
+        # on retrouve le client existant ou on le crée à la volée.
+        client_name = request.form.get("client_name", "").strip()
+        client = _get_or_create_client(client_name) if client_name else None
+        partner_id = client.id if client else None
+    else:
+        raw_partner_id = request.form.get("partner_id") or None
+        partner_id = int(raw_partner_id) if raw_partner_id else None
+
     tr = Transaction(
         type=type_,
         product_id=product.id,
-        partner_id=int(partner_id) if partner_id else None,
+        partner_id=partner_id,
         quantity=quantity,
         unit_price=unit_price,
         total=quantity * unit_price,
@@ -456,7 +484,6 @@ def modifier_transaction(tid):
 def commandes():
     if request.method == "POST":
         try:
-            client_id = int(request.form["client_id"])
             product_id = int(request.form["product_id"])
             quantity = float(request.form["quantity"])
             unit_price = float(request.form["unit_price"])
@@ -470,11 +497,14 @@ def commandes():
             flash("Quantité ou prix invalide.", "danger")
             return redirect(url_for("commandes"))
 
-        client = db.session.get(Partner, client_id)
-        product = db.session.get(Product, product_id)
-        if not client or client.type != "client":
-            flash("Client introuvable.", "danger")
+        client_name = request.form.get("client_name", "").strip()
+        if not client_name:
+            flash("Le nom du client est obligatoire.", "danger")
             return redirect(url_for("commandes"))
+        # Le client est saisi directement au clavier (avec suggestions) : on
+        # retrouve le client existant ou on le crée à la volée.
+        client = _get_or_create_client(client_name)
+        product = db.session.get(Product, product_id)
         if not product:
             flash("Produit introuvable.", "danger")
             return redirect(url_for("commandes"))
@@ -831,222 +861,4 @@ def modifier_partenaire(type_, pid):
     else:
         p.name = name
         p.phone = request.form.get("phone", "").strip()
-        p.address = request.form.get("address", "").strip()
-        p.note = request.form.get("note", "").strip()
-        db.session.commit()
-        flash("Mis à jour.", "success")
-    return redirect(url_for("partenaires", type_=type_))
-
-
-@app.route("/partenaires/<type_>/<int:pid>/supprimer", methods=["POST"])
-@login_required
-@admin_required
-def supprimer_partenaire(type_, pid):
-    p = db.session.get(Partner, pid)
-    if p:
-        if p.transactions.count() > 0:
-            flash("Impossible de supprimer : des transactions y sont liées.", "danger")
-        else:
-            db.session.delete(p)
-            db.session.commit()
-            flash("Supprimé.", "info")
-    return redirect(url_for("partenaires", type_=type_))
-
-
-# ---------- Rapports ----------
-
-@app.route("/rapports")
-@login_required
-def rapports():
-    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
-    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
-
-    base_q = Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
-
-    ventes_total = base_q.filter(Transaction.type == "vente").with_entities(
-        func.coalesce(func.sum(Transaction.total), 0.0)
-    ).scalar()
-    achats_total = base_q.filter(Transaction.type == "achat").with_entities(
-        func.coalesce(func.sum(Transaction.total), 0.0)
-    ).scalar()
-
-    par_produit = (
-        db.session.query(
-            Product.name, Transaction.type,
-            func.sum(Transaction.quantity), func.sum(Transaction.total)
-        )
-        .join(Product, Product.id == Transaction.product_id)
-        .filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
-        .group_by(Product.name, Transaction.type)
-        .all()
-    )
-
-    par_jour = (
-        db.session.query(
-            Transaction.date, Transaction.type, func.sum(Transaction.total)
-        )
-        .filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
-        .group_by(Transaction.date, Transaction.type)
-        .order_by(Transaction.date)
-        .all()
-    )
-
-    labels = sorted({d.isoformat() for d, _, _ in par_jour})
-    ventes_par_jour = {d: 0 for d in labels}
-    achats_par_jour = {d: 0 for d in labels}
-    for d, t, total in par_jour:
-        if t == "vente":
-            ventes_par_jour[d.isoformat()] = total
-        else:
-            achats_par_jour[d.isoformat()] = total
-
-    depenses_total = db.session.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
-        Expense.date >= date_debut, Expense.date <= date_fin
-    ).scalar()
-
-    par_categorie_depense = (
-        db.session.query(Expense.category, func.sum(Expense.amount))
-        .filter(Expense.date >= date_debut, Expense.date <= date_fin)
-        .group_by(Expense.category)
-        .order_by(func.sum(Expense.amount).desc())
-        .all()
-    )
-
-    # Coût des marchandises vendues et marge, par produit : le bénéfice se
-    # calcule sur les quantités effectivement vendues, au prix d'achat réel
-    # de ces marchandises — pas sur le volume total des achats de la période.
-    cout_vendu_total = 0.0
-    marges_par_produit = []
-    ventes_par_produit = (
-        db.session.query(
-            Product.id, Product.name, Product.unit,
-            func.sum(Transaction.quantity), func.sum(Transaction.total)
-        )
-        .join(Product, Product.id == Transaction.product_id)
-        .filter(Transaction.type == "vente", Transaction.date >= date_debut, Transaction.date <= date_fin)
-        .group_by(Product.id, Product.name, Product.unit)
-        .order_by(Product.name)
-        .all()
-    )
-    for pid, name, unit, qte_vendue, total_vente in ventes_par_produit:
-        cout_unitaire = _prix_achat_moyen(pid)
-        cout_total = (qte_vendue or 0.0) * cout_unitaire
-        cout_vendu_total += cout_total
-        marges_par_produit.append({
-            "name": name, "unit": unit, "qte": qte_vendue,
-            "ventes": total_vente, "cout_unitaire": cout_unitaire,
-            "cout_total": cout_total, "marge": total_vente - cout_total,
-        })
-
-    return render_template(
-        "rapports.html",
-        date_debut=date_debut,
-        date_fin=date_fin,
-        ventes_total=ventes_total,
-        achats_total=achats_total,
-        cout_vendu_total=cout_vendu_total,
-        depenses_total=depenses_total,
-        benefice=ventes_total - cout_vendu_total - depenses_total,
-        par_produit=par_produit,
-        marges_par_produit=marges_par_produit,
-        par_categorie_depense=par_categorie_depense,
-        labels=labels,
-        ventes_par_jour=[ventes_par_jour[d] for d in labels],
-        achats_par_jour=[achats_par_jour[d] for d in labels],
-    )
-
-
-@app.route("/rapports/export.csv")
-@login_required
-def export_csv():
-    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
-    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
-    transactions = (
-        Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
-        .order_by(Transaction.date)
-        .all()
-    )
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Date", "Type", "Produit", "Partenaire", "Quantité", "Prix unitaire", "Total", "Enregistré par"])
-    for t in transactions:
-        writer.writerow([
-            t.date.isoformat(), t.type, t.product.name,
-            t.partner.name if t.partner else "",
-            t.quantity, t.unit_price, t.total,
-            t.user.full_name if t.user else "",
-        ])
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment;filename=senavipro_transactions_{date_debut}_{date_fin}.csv"},
-    )
-
-
-@app.route("/depenses/export.csv")
-@login_required
-def export_depenses_csv():
-    date_debut = _parse_date(request.args.get("date_debut")) or (date.today() - timedelta(days=30))
-    date_fin = _parse_date(request.args.get("date_fin")) or date.today()
-    depenses = (
-        Expense.query.filter(Expense.date >= date_debut, Expense.date <= date_fin)
-        .order_by(Expense.date)
-        .all()
-    )
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(["Date", "Catégorie", "Description", "Montant", "Enregistré par"])
-    for e in depenses:
-        writer.writerow([
-            e.date.isoformat(), e.category, e.description or "",
-            e.amount, e.user.full_name if e.user else "",
-        ])
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment;filename=senavipro_depenses_{date_debut}_{date_fin}.csv"},
-    )
-
-
-# ---------- Utilisateurs (admin) ----------
-
-@app.route("/utilisateurs", methods=["GET", "POST"])
-@login_required
-@admin_required
-def utilisateurs():
-    if request.method == "POST":
-        username = request.form.get("username", "").strip()
-        full_name = request.form.get("full_name", "").strip()
-        password = request.form.get("password", "")
-        role = request.form.get("role", "employe")
-        if not username or not full_name or not password:
-            flash("Tous les champs sont obligatoires.", "danger")
-        elif User.query.filter_by(username=username).first():
-            flash("Cet identifiant existe déjà.", "danger")
-        else:
-            u = User(username=username, full_name=full_name, role=role)
-            u.set_password(password)
-            db.session.add(u)
-            db.session.commit()
-            flash("Utilisateur créé.", "success")
-        return redirect(url_for("utilisateurs"))
-
-    liste = User.query.order_by(User.username).all()
-    return render_template("utilisateurs.html", liste=liste)
-
-
-@app.route("/utilisateurs/<int:uid>/toggle", methods=["POST"])
-@login_required
-@admin_required
-def toggle_utilisateur(uid):
-    u = db.session.get(User, uid)
-    if u and u.id != current_user.id:
-        u.active = not u.active
-        db.session.commit()
-    return redirect(url_for("utilisateurs"))
-
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    debug = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(debug=debug, host="0.0.0.0", port=port)
+        p.address =
