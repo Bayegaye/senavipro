@@ -17,6 +17,15 @@ from models import db, User, Partner, Product, Transaction, Expense, Order
 
 APP_NAME = "SENAVIPRO"
 
+# Coordonnées de l'entreprise affichées sur les factures.
+COMPANY_INFO = {
+    "phone": "78 207 87 87",
+    "address": "Sangalkam, Dakar",
+    "rccm": "SN TBC 2025M076",
+    "ninea": "0094 58 987 212",
+    "fra": "1839/2025/FRA",
+}
+
 
 def _database_uri():
     """Lit DATABASE_URL (fourni par la plupart des hébergeurs pour Postgres).
@@ -377,6 +386,15 @@ def achats():
         partenaires=Partner.query.filter_by(type="fournisseur").order_by(Partner.name).all(),
         today=date.today().isoformat(),
     )
+
+
+@app.route("/ventes/<int:tid>/facture")
+@login_required
+def facture_vente(tid):
+    tr = db.session.get(Transaction, tid)
+    if not tr or tr.type != "vente":
+        abort(404)
+    return render_template("facture.html", t=tr, company=COMPANY_INFO)
 
 
 @app.route("/transactions/<int:tid>/supprimer", methods=["POST"])
