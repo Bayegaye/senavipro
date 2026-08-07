@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Facture #{{ '%05d'|format(t.id) }} — {{ app_name }}</title>
+<link rel="icon" type="image/jpeg" href="{{ url_for('static', filename='img/logo.jpg') }}">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+  body { background:#f5f7f6; color:#222; }
+  .facture-container { max-width: 800px; margin: 30px auto; padding: 32px; border: 1px solid #ddd; background:#fff; border-radius:.5rem; }
+  .facture-header { display:flex; justify-content:space-between; align-items:flex-start; border-bottom: 3px solid #1e5631; padding-bottom: 16px; margin-bottom: 24px; flex-wrap: wrap; gap: 1rem; }
+  .facture-header img { height: 70px; width:70px; object-fit:contain; border-radius:6px; background:#fff; padding:2px; }
+  .company-name { font-size:1.4rem; font-weight:700; color:#1e5631; }
+  .facture-title { text-align:right; }
+  .facture-title h2 { color:#1e5631; margin-bottom:4px; letter-spacing: 1px; }
+  table.items thead th { background:#1e5631; color:#fff; }
+  .total-row td { font-weight:700; font-size:1.15rem; }
+  @media print {
+    body { background:#fff; }
+    .no-print { display:none !important; }
+    .facture-container { border:none; margin:0; padding:0; }
+  }
+</style>
+</head>
+<body>
+<div class="facture-container">
+  <div class="text-end no-print mb-3">
+    <button class="btn btn-success btn-sm" onclick="window.print()">🖨 Imprimer / Enregistrer en PDF</button>
+    <a href="{{ url_for('ventes') }}" class="btn btn-outline-secondary btn-sm">Retour aux ventes</a>
+  </div>
+
+  <div class="facture-header">
+    <div class="d-flex align-items-center gap-3">
+      <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="{{ app_name }}">
+      <div>
+        <div class="company-name">{{ app_name }}</div>
+        <div class="small text-muted">{{ company.address }}</div>
+        <div class="small text-muted">Tél : {{ company.phone }}</div>
+        <div class="small text-muted">RCCM : {{ company.rccm }}</div>
+        <div class="small text-muted">NINEA : {{ company.ninea }}</div>
+        <div class="small text-muted">FRA : {{ company.fra }}</div>
+      </div>
+    </div>
+    <div class="facture-title">
+      <h2>FACTURE</h2>
+      <div>N° {{ '%05d'|format(t.id) }}</div>
+      <div>Date : {{ t.date.strftime('%d/%m/%Y') }}</div>
+    </div>
+  </div>
+
+  <div class="mb-4">
+    <strong>Client :</strong> {{ t.partner.name if t.partner else 'Client au comptant' }}
+    {% if t.partner and t.partner.phone %}<br><span class="text-muted small">Tél : {{ t.partner.phone }}</span>{% endif %}
+  </div>
+
+  <table class="table table-bordered items">
+    <thead>
+      <tr><th>Désignation</th><th>Quantité</th><th>Prix unitaire (FCFA)</th><th>Total (FCFA)</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ t.product.name }}</td>
+        <td>{{ '%.0f'|format(t.quantity) }} {{ t.product.unit }}</td>
+        <td>{{ '%.0f'|format(t.unit_price) }}</td>
+        <td>{{ '%.0f'|format(t.total) }}</td>
+      </tr>
+    </tbody>
+    <tfoot>
+      <tr class="total-row">
+        <td colspan="3" class="text-end">TOTAL À PAYER</td>
+        <td>{{ '%.0f'|format(t.total) }} FCFA</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  {% if t.note %}
+  <p class="text-muted small">Note : {{ t.note }}</p>
+  {% endif %}
+
+  <p class="text-center text-muted small mt-5 mb-0">Merci de votre confiance — {{ app_name }}</p>
+</div>
+</body>
+</html>
