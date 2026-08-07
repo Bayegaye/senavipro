@@ -5,13 +5,15 @@
 <div class="card card-stat p-3">
   <div class="table-responsive">
   <table class="table table-hover align-middle">
-    <thead><tr><th>Produit</th><th>Unité</th><th>Stock actuel</th><th>Seuil d'alerte</th>{% if current_user.is_admin %}<th>Ajuster</th>{% endif %}</tr></thead>
+    <thead><tr><th>Produit</th><th>Unité</th><th>Stock physique</th><th>Réservé (commandes)</th><th>Disponible</th><th>Seuil d'alerte</th>{% if current_user.is_admin %}<th>Ajuster</th>{% endif %}</tr></thead>
     <tbody>
     {% for p in produits %}
       <tr class="{% if p.stock <= p.seuil_alerte %}table-warning{% endif %}">
         <td>{{ p.name }}</td>
         <td>{{ p.unit }}</td>
         <td><strong>{{ '%.0f'|format(p.stock) }}</strong></td>
+        <td class="text-muted">{{ '%.0f'|format(p.stock - disponibilites.get(p.id, p.stock)) }}</td>
+        <td class="{% if disponibilites.get(p.id, p.stock) <= p.seuil_alerte %}text-danger fw-bold{% else %}fw-bold text-success{% endif %}">{{ '%.0f'|format(disponibilites.get(p.id, p.stock)) }}</td>
         <td>{{ '%.0f'|format(p.seuil_alerte) }}</td>
         {% if current_user.is_admin %}
         <td>
