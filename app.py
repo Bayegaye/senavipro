@@ -13,7 +13,7 @@ from flask_login import (
 )
 from sqlalchemy import func
 
-from models import db, User, Partner, Product, Transaction, Expense
+from models import db, User, Partner, Product, Transaction, Expense, Order
 
 APP_NAME = "SENAVIPRO"
 
@@ -171,6 +171,22 @@ def _cout_marchandises_vendues(start=None, end=None):
     for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
         total_cout += (qte_vendue or 0.0) * _prix_achat_moyen(product_id)
     return total_cout
+
+
+def _stock_reserve(product_id, exclude_order_id=None):
+    """Quantité totale réservée par les commandes clients en attente pour un
+    produit donné — permet de calculer le stock réellement disponible à la
+    vente (stock physique moins ce qui est déjà promis à d'autres clients)."""
+    q = db.session.query(func.coalesce(func.sum(Order.quantity), 0.0)).filter(
+        Order.product_id == product_id, Order.status == "en_attente"
+    )
+    if exclude_order_id:
+        q = q.filter(Order.id != exclude_order_id)
+    return q.scalar() or 0.0
+
+
+def _stock_disponible(product, exclude_order_id=None):
+    return product.stock - _stock_reserve(product.id, exclude_order_id=exclude_order_id)
 
 
 @app.route("/dashboard")
@@ -433,6 +449,160 @@ def modifier_transaction(tid):
     return redirect(redirect_url)
 
 
+# ---------- Commandes clients ----------
+
+@app.route("/commandes", methods=["GET", "POST"])
+@login_required
+def commandes():
+    if request.method == "POST":
+        try:
+            client_id = int(request.form["client_id"])
+            product_id = int(request.form["product_id"])
+            quantity = float(request.form["quantity"])
+            unit_price = float(request.form["unit_price"])
+            cdate = request.form.get("date") or date.today().isoformat()
+            note = request.form.get("note", "").strip()
+        except (KeyError, ValueError):
+            flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+            return redirect(url_for("commandes"))
+
+        if quantity <= 0 or unit_price < 0:
+            flash("Quantité ou prix invalide.", "danger")
+            return redirect(url_for("commandes"))
+
+        client = db.session.get(Partner, client_id)
+        product = db.session.get(Product, product_id)
+        if not client or client.type != "client":
+            flash("Client introuvable.", "danger")
+            return redirect(url_for("commandes"))
+        if not product:
+            flash("Produit introuvable.", "danger")
+            return redirect(url_for("commandes"))
+
+        disponible = _stock_disponible(product)
+        if quantity > disponible:
+            flash(
+                f"Stock disponible insuffisant pour {product.name} "
+                f"(disponible après commandes en attente : {disponible:g} {product.unit}).",
+                "danger",
+            )
+            return redirect(url_for("commandes"))
+
+        try:
+            order_date = datetime.strptime(cdate, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Date invalide.", "danger")
+            return redirect(url_for("commandes"))
+
+        o = Order(
+            client_id=client.id,
+            product_id=product.id,
+            quantity=quantity,
+            unit_price=unit_price,
+            total=quantity * unit_price,
+            status="en_attente",
+            date=order_date,
+            note=note,
+            user_id=current_user.id,
+        )
+        db.session.add(o)
+        db.session.commit()
+        flash("Commande enregistrée.", "success")
+        return redirect(url_for("commandes"))
+
+    statut_filtre = request.args.get("statut", "en_attente")
+    q = Order.query
+    if statut_filtre in ("en_attente", "confirmee", "annulee"):
+        q = q.filter_by(status=statut_filtre)
+    liste = q.order_by(Order.date.desc(), Order.created_at.desc()).all()
+
+    produits = Product.query.order_by(Product.name).all()
+    disponibilites = {p.id: _stock_disponible(p) for p in produits}
+
+    return render_template(
+        "commandes.html",
+        liste=liste,
+        produits=produits,
+        disponibilites=disponibilites,
+        clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
+        statut_filtre=statut_filtre,
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/commandes/<int:oid>/confirmer", methods=["POST"])
+@login_required
+def confirmer_commande(oid):
+    o = db.session.get(Order, oid)
+    if not o or o.status != "en_attente":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("commandes"))
+
+    product = db.session.get(Product, o.product_id)
+    if not product:
+        flash("Produit introuvable.", "danger")
+        return redirect(url_for("commandes"))
+
+    if product.stock < o.quantity:
+        flash(
+            f"Stock physique insuffisant pour confirmer cette commande : {product.name} "
+            f"(disponible : {product.stock:g} {product.unit}).",
+            "danger",
+        )
+        return redirect(url_for("commandes"))
+
+    tr = Transaction(
+        type="vente",
+        product_id=product.id,
+        partner_id=o.client_id,
+        quantity=o.quantity,
+        unit_price=o.unit_price,
+        total=o.total,
+        date=date.today(),
+        note=(f"Commande #{o.id} confirmée" + (f" — {o.note}" if o.note else "")),
+        user_id=current_user.id,
+    )
+    product.stock -= o.quantity
+    db.session.add(tr)
+    db.session.flush()  # récupérer tr.id avant de l'associer à la commande
+
+    o.status = "confirmee"
+    o.date_confirmation = date.today()
+    o.transaction_id = tr.id
+
+    db.session.commit()
+    flash(f"Commande transformée en vente ({o.total:.0f} FCFA). Stock mis à jour.", "success")
+    return redirect(url_for("commandes"))
+
+
+@app.route("/commandes/<int:oid>/annuler", methods=["POST"])
+@login_required
+def annuler_commande(oid):
+    o = db.session.get(Order, oid)
+    if not o or o.status != "en_attente":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("commandes"))
+    o.status = "annulee"
+    db.session.commit()
+    flash("Commande annulée. Le stock réservé est de nouveau disponible.", "info")
+    return redirect(url_for("commandes"))
+
+
+@app.route("/commandes/<int:oid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_commande(oid):
+    o = db.session.get(Order, oid)
+    if o:
+        if o.status == "confirmee":
+            flash("Impossible de supprimer une commande déjà confirmée (elle correspond à une vente réelle — supprimez plutôt la transaction associée si besoin).", "danger")
+        else:
+            db.session.delete(o)
+            db.session.commit()
+            flash("Commande supprimée.", "info")
+    return redirect(url_for("commandes"))
+
+
 # ---------- Produits ----------
 
 @app.route("/produits", methods=["GET", "POST"])
@@ -605,7 +775,8 @@ def stock():
         return redirect(url_for("stock"))
 
     produits = Product.query.order_by(Product.name).all()
-    return render_template("stock.html", produits=produits)
+    disponibilites = {p.id: _stock_disponible(p) for p in produits}
+    return render_template("stock.html", produits=produits, disponibilites=disponibilites)
 
 
 # ---------- Clients / Fournisseurs ----------
@@ -878,4 +1049,4 @@ def toggle_utilisateur(uid):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "0") == "1"
-    app.run(debug=debug, host="0.0.0.0", port=port)
+    app.run(debug=debug, host="0.0.0.0", port=port).0", port=port)
