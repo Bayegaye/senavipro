@@ -87,3 +87,29 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User")
+
+
+class Order(db.Model):
+    """Commande d'un client : réserve une quantité de stock avant d'être
+    transformée en vente (à la confirmation) ou annulée (la réservation est
+    alors libérée sans impact sur le stock, qui n'est modifié qu'à la
+    confirmation)."""
+    __tablename__ = "orders"
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    unit_price = db.Column(db.Float, nullable=False)
+    total = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="en_attente")  # en_attente | confirmee | annulee
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    date_confirmation = db.Column(db.Date, nullable=True)
+    note = db.Column(db.String(256))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    transaction_id = db.Column(db.Integer, db.ForeignKey("transactions.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    client = db.relationship("Partner")
+    product = db.relationship("Product")
+    user = db.relationship("User")
+    transaction = db.relationship("Transaction")
