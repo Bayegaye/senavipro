@@ -91,6 +91,7 @@
           <tr>
             <th>Date</th><th>Produit</th><th>{{ 'Client' if type_=='vente' else 'Fournisseur' }}</th>
             <th>Qté</th><th>P.U.</th><th>Total</th><th>Par</th>
+            {% if type_=='vente' %}<th>Facture</th>{% endif %}
             {% if current_user.is_admin %}<th></th>{% endif %}
           </tr>
         </thead>
@@ -118,6 +119,9 @@
             <td><input type="number" step="any" min="0" name="unit_price" value="{{ t.unit_price }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
             <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
             <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
+            {% if type_=='vente' %}
+            <td><a href="{{ url_for('facture_vente', tid=t.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Voir la facture">🧾</a></td>
+            {% endif %}
             <td class="d-flex gap-1">
               <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ t.id }}" title="Enregistrer">✏️</button>
               <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ t.id }}" title="Supprimer">✕</button>
@@ -130,6 +134,9 @@
             <td>{{ '%.0f'|format(t.unit_price) }}</td>
             <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
             <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
+            {% if type_=='vente' %}
+            <td><a href="{{ url_for('facture_vente', tid=t.id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Voir la facture">🧾</a></td>
+            {% endif %}
             {% endif %}
           </tr>
         {% else %}
@@ -141,7 +148,7 @@
           <tr class="table-light">
             <th colspan="5" class="text-end">Total :</th>
             <th>{{ '%.0f'|format(transactions|sum(attribute='total')) }} FCFA</th>
-            <th colspan="2"></th>
+            <th colspan="{% if type_=='vente' %}3{% else %}2{% endif %}"></th>
           </tr>
         </tfoot>
         {% endif %}
