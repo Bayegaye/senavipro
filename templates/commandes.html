@@ -10,12 +10,13 @@
       <form method="POST">
         <div class="mb-2">
           <label class="form-label">Client</label>
-          <select name="client_id" class="form-select" required>
-            <option value="">— Choisir un client —</option>
+          <input type="text" name="client_name" list="clients-datalist-cmd" class="form-control" placeholder="Nom du client" autocomplete="off" required>
+          <datalist id="clients-datalist-cmd">
             {% for c in clients %}
-              <option value="{{ c.id }}">{{ c.name }}</option>
+              <option value="{{ c.name }}">
             {% endfor %}
-          </select>
+          </datalist>
+          <div class="form-text">Tapez un nom existant ou un nouveau — le client sera créé automatiquement s'il n'existe pas.</div>
         </div>
         <div class="mb-2">
           <label class="form-label">Produit</label>
