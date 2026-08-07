@@ -19,13 +19,24 @@
           </select>
         </div>
         <div class="mb-2">
-          <label class="form-label">{{ 'Client' if type_=='vente' else 'Fournisseur' }} (optionnel)</label>
+          {% if type_=='vente' %}
+          <label class="form-label">Client (optionnel)</label>
+          <input type="text" name="client_name" list="clients-datalist" class="form-control" placeholder="Nom du client" autocomplete="off">
+          <datalist id="clients-datalist">
+            {% for pa in partenaires %}
+              <option value="{{ pa.name }}">
+            {% endfor %}
+          </datalist>
+          <div class="form-text">Tapez un nom existant ou un nouveau — le client sera créé automatiquement s'il n'existe pas.</div>
+          {% else %}
+          <label class="form-label">Fournisseur (optionnel)</label>
           <select name="partner_id" class="form-select">
             <option value="">— Non spécifié —</option>
             {% for pa in partenaires %}
               <option value="{{ pa.id }}">{{ pa.name }}</option>
             {% endfor %}
           </select>
+          {% endif %}
         </div>
         <div class="row">
           <div class="col-6 mb-2">
@@ -86,6 +97,32 @@
         <tbody>
         {% for t in transactions %}
           <tr>
+            {% if current_user.is_admin %}
+            <td><input type="date" name="date" value="{{ t.date.isoformat() }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="min-width:135px"></td>
+            <td>
+              <select name="product_id" form="edit-{{ t.id }}" class="form-select form-select-sm" style="min-width:170px">
+                {% for p in produits %}
+                  <option value="{{ p.id }}" {% if p.id == t.product_id %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td>
+              <select name="partner_id" form="edit-{{ t.id }}" class="form-select form-select-sm" style="min-width:140px">
+                <option value="">— Non spécifié —</option>
+                {% for pa in partenaires %}
+                  <option value="{{ pa.id }}" {% if t.partner_id == pa.id %}selected{% endif %}>{{ pa.name }}</option>
+                {% endfor %}
+              </select>
+            </td>
+            <td><input type="number" step="any" min="0.01" name="quantity" value="{{ t.quantity }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:90px"></td>
+            <td><input type="number" step="any" min="0" name="unit_price" value="{{ t.unit_price }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
+            <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
+            <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
+            <td class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ t.id }}" title="Enregistrer">✏️</button>
+              <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ t.id }}" title="Supprimer">✕</button>
+            </td>
+            {% else %}
             <td>{{ t.date.strftime('%d/%m/%Y') }}</td>
             <td>{{ t.product.name }}</td>
             <td>{{ t.partner.name if t.partner else '—' }}</td>
@@ -93,12 +130,6 @@
             <td>{{ '%.0f'|format(t.unit_price) }}</td>
             <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
             <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
-            {% if current_user.is_admin %}
-            <td>
-              <form method="POST" action="{{ url_for('supprimer_transaction', tid=t.id) }}" onsubmit="return confirm('Supprimer cette transaction ?');">
-                <button class="btn btn-sm btn-outline-danger">✕</button>
-              </form>
-            </td>
             {% endif %}
           </tr>
         {% else %}
@@ -119,6 +150,13 @@
     </div>
   </div>
 </div>
+
+{% if current_user.is_admin %}
+{% for t in transactions %}
+<form id="edit-{{ t.id }}" method="POST" action="{{ url_for('modifier_transaction', tid=t.id) }}"></form>
+<form id="del-{{ t.id }}" method="POST" action="{{ url_for('supprimer_transaction', tid=t.id) }}" onsubmit="return confirm('Supprimer cette transaction ?');"></form>
+{% endfor %}
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
