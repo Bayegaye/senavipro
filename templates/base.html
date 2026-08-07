@@ -34,6 +34,7 @@
     <div class="collapse navbar-collapse" id="nav">
       <ul class="navbar-nav me-auto">
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='dashboard' %}active{% endif %}" href="{{ url_for('dashboard') }}">Tableau de bord</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint=='commandes' %}active{% endif %}" href="{{ url_for('commandes') }}">Commandes</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='ventes' %}active{% endif %}" href="{{ url_for('ventes') }}">Ventes</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='achats' %}active{% endif %}" href="{{ url_for('achats') }}">Achats</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='stock' %}active{% endif %}" href="{{ url_for('stock') }}">Stock</a></li>
