@@ -100,6 +100,9 @@
                 <button class="btn btn-sm btn-outline-warning" title="Annuler">✕</button>
               </form>
               {% endif %}
+              {% if o.status == 'confirmee' and o.transaction_id %}
+              <a href="{{ url_for('facture_vente', tid=o.transaction_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Voir la facture">🧾</a>
+              {% endif %}
               {% if current_user.is_admin and o.status != 'confirmee' %}
               <form method="POST" action="{{ url_for('supprimer_commande', oid=o.id) }}" onsubmit="return confirm('Supprimer définitivement cette commande ?');">
                 <button class="btn btn-sm btn-outline-danger" title="Supprimer">🗑</button>
