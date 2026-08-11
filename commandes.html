@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Commandes{% endblock %}
+{% block content %}
+<h3 class="mb-4">Commandes clients</h3>
+
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-stat p-3">
+      <h5>Nouvelle commande</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Client</label>
+          <input type="text" name="client_name" list="clients-datalist-cmd" class="form-control" placeholder="Nom du client" autocomplete="off" required>
+          <datalist id="clients-datalist-cmd">
+            {% for c in clients %}
+              <option value="{{ c.name }}">
+            {% endfor %}
+          </datalist>
+          <div class="form-text">Tapez un nom existant ou un nouveau — le client sera créé automatiquement s'il n'existe pas.</div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Produit</label>
+          <select name="product_id" id="product_id" class="form-select" required>
+            {% for p in produits %}
+              <option value="{{ p.id }}" data-price="{{ p.prix_vente_defaut }}">{{ p.name }} (disponible : {{ '%.0f'|format(disponibilites.get(p.id, 0)) }} {{ p.unit }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row">
+          <div class="col-6 mb-2">
+            <label class="form-label">Quantité</label>
+            <input type="number" step="any" min="0.01" name="quantity" class="form-control" required>
+          </div>
+          <div class="col-6 mb-2">
+            <label class="form-label">Prix unitaire (FCFA)</label>
+            <input type="number" step="any" min="0" name="unit_price" id="unit_price" class="form-control" required>
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" value="{{ today }}" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Note (optionnel)</label>
+          <input type="text" name="note" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-success w-100">Enregistrer la commande</button>
+      </form>
+      <p class="text-muted small mt-2 mb-0">
+        Le stock « disponible » tient compte des commandes déjà en attente sur ce
+        produit — il ne sera réellement débité qu'à la confirmation de la commande.
+      </p>
+    </div>
+  </div>
+
+  <div class="col-lg-8">
+    <div class="card card-stat p-3">
+      <form method="GET" class="row g-2 mb-3">
+        <div class="col-md-6">
+          <select name="statut" class="form-select form-select-sm" onchange="this.form.submit()">
+            <option value="en_attente" {% if statut_filtre=='en_attente' %}selected{% endif %}>En attente</option>
+            <option value="confirmee" {% if statut_filtre=='confirmee' %}selected{% endif %}>Confirmées (ventes)</option>
+            <option value="annulee" {% if statut_filtre=='annulee' %}selected{% endif %}>Annulées</option>
+            <option value="toutes" {% if statut_filtre=='toutes' %}selected{% endif %}>Toutes</option>
+          </select>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+      <table class="table table-sm table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Date</th><th>Client</th><th>Produit</th><th>Qté</th><th>P.U.</th><th>Total</th><th>Statut</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for o in liste %}
+          <tr>
+            <td>{{ o.date.strftime('%d/%m/%Y') }}</td>
+            <td>{{ o.client.name if o.client else '—' }}</td>
+            <td>{{ o.product.name if o.product else '—' }}</td>
+            <td>{{ '%.0f'|format(o.quantity) }}</td>
+            <td>{{ '%.0f'|format(o.unit_price) }}</td>
+            <td><strong>{{ '%.0f'|format(o.total) }}</strong></td>
+            <td>
+              {% if o.status == 'en_attente' %}
+                <span class="badge bg-warning text-dark">En attente</span>
+              {% elif o.status == 'confirmee' %}
+                <span class="badge bg-success">Confirmée (vente)</span>
+              {% else %}
+                <span class="badge bg-secondary">Annulée</span>
+              {% endif %}
+            </td>
+            <td class="d-flex gap-1">
+              {% if o.status == 'en_attente' %}
+              <form method="POST" action="{{ url_for('confirmer_commande', oid=o.id) }}" onsubmit="return confirm('Confirmer cette commande et la transformer en vente ? Le stock sera débité.');">
+                <button class="btn btn-sm btn-outline-success" title="Confirmer en vente">✓</button>
+              </form>
+              <form method="POST" action="{{ url_for('annuler_commande', oid=o.id) }}" onsubmit="return confirm('Annuler cette commande ?');">
+                <button class="btn btn-sm btn-outline-warning" title="Annuler">✕</button>
+              </form>
+              {% endif %}
+              {% if o.status == 'confirmee' and o.sale_id %}
+              <a href="{{ url_for('facture_detail', sid=o.sale_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Voir la facture">🧾</a>
+              {% endif %}
+              {% if current_user.is_admin and o.status != 'confirmee' %}
+              <form method="POST" action="{{ url_for('supprimer_commande', oid=o.id) }}" onsubmit="return confirm('Supprimer définitivement cette commande ?');">
+                <button class="btn btn-sm btn-outline-danger" title="Supprimer">🗑</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="8" class="text-muted">Aucune commande.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var productSelect = document.getElementById('product_id');
+  var priceInput = document.getElementById('unit_price');
+  function fillPrice() {
+    var opt = productSelect.options[productSelect.selectedIndex];
+    var price = opt ? opt.getAttribute('data-price') : null;
+    if (price && parseFloat(price) > 0 && !priceInput.value) {
+      priceInput.value = price;
+    }
+  }
+  if (productSelect && priceInput) {
+    productSelect.addEventListener('change', function () {
+      var opt = productSelect.options[productSelect.selectedIndex];
+      var price = opt ? opt.getAttribute('data-price') : null;
+      if (price && parseFloat(price) > 0) {
+        priceInput.value = price;
+      }
+    });
+    fillPrice();
+  }
+});
+</script>
+{% endblock %}
