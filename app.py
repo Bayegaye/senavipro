@@ -356,14 +356,34 @@ def _create_transaction(type_):
         )
         return
 
+    vente_date = datetime.strptime(tdate, "%Y-%m-%d").date()
+
+    sale_id = None
+    if type_ == "vente":
+        # Chaque vente — même via ce formulaire rapide à un seul produit —
+        # génère désormais sa propre facture, comme « Nouvelle facture »,
+        # pour que le lien facture apparaisse pour toutes les ventes et pas
+        # seulement celles créées via le formulaire multi-produits.
+        vente = Sale(
+            numero=_next_sale_numero(),
+            partner_id=int(partner_id) if partner_id else None,
+            total=quantity * unit_price,
+            date=vente_date,
+            user_id=current_user.id,
+        )
+        db.session.add(vente)
+        db.session.flush()  # pour obtenir vente.id avant de créer la ligne
+        sale_id = vente.id
+
     tr = Transaction(
         type=type_,
         product_id=product.id,
         partner_id=int(partner_id) if partner_id else None,
+        sale_id=sale_id,
         quantity=quantity,
         unit_price=unit_price,
         total=quantity * unit_price,
-        date=datetime.strptime(tdate, "%Y-%m-%d").date(),
+        date=vente_date,
         note=note,
         user_id=current_user.id,
     )
