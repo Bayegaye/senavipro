@@ -206,6 +206,46 @@ def _get_or_create_client(name):
 
 # ---------- Tableau de bord ----------
 
+def _prix_achat_moyen(product_id):
+    """Prix d'achat moyen pondéré par quantité d'un produit, calculé à partir
+    de l'historique réel des transactions d'achat enregistrées (prix payé au
+    fournisseur à chaque achat), pas d'un prix par défaut fixe. Retombe sur le
+    prix d'achat par défaut du produit si aucun achat n'a jamais été
+    enregistré pour lui."""
+    row = (
+        db.session.query(
+            func.coalesce(func.sum(Transaction.quantity * Transaction.unit_price), 0.0),
+            func.coalesce(func.sum(Transaction.quantity), 0.0),
+        )
+        .filter(Transaction.type == "achat", Transaction.product_id == product_id)
+        .one()
+    )
+    total_cout, total_qte = row
+    if total_qte:
+        return total_cout / total_qte
+    product = db.session.get(Product, product_id)
+    return product.prix_achat_defaut if product else 0.0
+
+
+def _cout_produits_vendus(start=None, end=None):
+    """Coût d'achat (au prix moyen pondéré réellement payé) des produits
+    vendus sur la période — utilisé pour calculer la marge réelle des ventes,
+    plutôt que de comparer les ventes du jour aux achats du jour (qui n'ont
+    souvent aucun lien direct : un produit vendu aujourd'hui peut avoir été
+    acheté un autre jour)."""
+    q = db.session.query(
+        Transaction.product_id, func.coalesce(func.sum(Transaction.quantity), 0.0)
+    ).filter(Transaction.type == "vente")
+    if start:
+        q = q.filter(Transaction.date >= start)
+    if end:
+        q = q.filter(Transaction.date <= end)
+    total_cout = 0.0
+    for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
+        total_cout += (qte_vendue or 0.0) * _prix_achat_moyen(product_id)
+    return total_cout
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -235,6 +275,16 @@ def dashboard():
     achats_jour = sum_total("achat", today, today)
     depenses_jour = sum_expenses(today, today)
 
+    # Bénéfice = marge réelle sur les produits vendus (prix de vente − coût
+    # d'achat moyen pondéré de ces mêmes produits, indépendamment du jour où
+    # ils ont été achetés), moins les dépenses de la période — et non plus
+    # ventes − achats de la période, qui ne reflète pas la rentabilité réelle
+    # si les achats et les ventes ne portent pas sur les mêmes produits/jours.
+    cout_vendus_mois = _cout_produits_vendus(start_month, today)
+    cout_vendus_jour = _cout_produits_vendus(today, today)
+    marge_mois = ventes_mois - cout_vendus_mois
+    marge_jour = ventes_jour - cout_vendus_jour
+
     produits = Product.query.order_by(Product.name).all()
     dernieres_transactions = (
         Transaction.query.order_by(Transaction.created_at.desc()).limit(8).all()
@@ -246,11 +296,11 @@ def dashboard():
         ventes_mois=ventes_mois,
         achats_mois=achats_mois,
         depenses_mois=depenses_mois,
-        benefice_mois=ventes_mois - achats_mois - depenses_mois,
+        benefice_mois=marge_mois - depenses_mois,
         ventes_jour=ventes_jour,
         achats_jour=achats_jour,
         depenses_jour=depenses_jour,
-        benefice_jour=ventes_jour - achats_jour - depenses_jour,
+        benefice_jour=marge_jour - depenses_jour,
         produits=produits,
         dernieres_transactions=dernieres_transactions,
         alertes_stock=alertes_stock,
