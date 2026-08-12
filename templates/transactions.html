@@ -3,12 +3,25 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3>{{ titre }}</h3>
+  {% if type_=='vente' %}
+  <a href="{{ url_for('nouvelle_vente') }}" class="btn btn-success">
+    <i class="bi bi-receipt"></i> Nouvelle facture (plusieurs produits)
+  </a>
+  {% endif %}
 </div>
+
+{% if type_=='vente' %}
+<div class="alert alert-light border small mb-3">
+  Pour vendre <strong>plusieurs produits au même client sur une seule facture</strong>,
+  utilisez « Nouvelle facture » ci-dessus. Le formulaire ci-dessous reste disponible
+  pour enregistrer rapidement une vente d'un seul produit (sans facture).
+</div>
+{% endif %}
 
 <div class="row g-3">
   <div class="col-lg-4">
     <div class="card card-stat p-3">
-      <h5>{% if type_=='vente' %}Nouvelle vente{% else %}Nouvel achat{% endif %}</h5>
+      <h5>{% if type_=='vente' %}Vente rapide (un seul produit){% else %}Nouvel achat{% endif %}</h5>
       <form method="POST">
         <div class="mb-2">
           <label class="form-label">Produit</label>
@@ -79,7 +92,9 @@
         <thead>
           <tr>
             <th>Date</th><th>Produit</th><th>{{ 'Client' if type_=='vente' else 'Fournisseur' }}</th>
-            <th>Qté</th><th>P.U.</th><th>Total</th><th>Par</th>
+            <th>Qté</th><th>P.U.</th><th>Total</th>
+            {% if type_=='vente' %}<th>Facture</th>{% endif %}
+            <th>Par</th>
             {% if current_user.is_admin %}<th></th>{% endif %}
           </tr>
         </thead>
@@ -92,6 +107,15 @@
             <td>{{ '%.0f'|format(t.quantity) }}</td>
             <td>{{ '%.0f'|format(t.unit_price) }}</td>
             <td><strong>{{ '%.0f'|format(t.total) }}</strong></td>
+            {% if type_=='vente' %}
+            <td>
+              {% if t.sale_id %}
+                <a href="{{ url_for('facture_detail', sid=t.sale_id) }}" class="badge bg-success text-decoration-none">{{ t.sale.numero }}</a>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+            {% endif %}
             <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
             {% if current_user.is_admin %}
             <td>
@@ -102,7 +126,7 @@
             {% endif %}
           </tr>
         {% else %}
-          <tr><td colspan="8" class="text-muted">Aucune transaction.</td></tr>
+          <tr><td colspan="{{ 7 + (1 if type_=='vente' else 0) + (1 if current_user.is_admin else 0) }}" class="text-muted">Aucune transaction.</td></tr>
         {% endfor %}
         </tbody>
         {% if transactions %}
@@ -110,7 +134,7 @@
           <tr class="table-light">
             <th colspan="5" class="text-end">Total :</th>
             <th>{{ '%.0f'|format(transactions|sum(attribute='total')) }} FCFA</th>
-            <th colspan="2"></th>
+            <th colspan="{{ (2 if type_=='vente' else 1) + (1 if current_user.is_admin else 0) }}"></th>
           </tr>
         </tfoot>
         {% endif %}

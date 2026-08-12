@@ -1,0 +1,148 @@
+{% extends "base.html" %}
+{% block title %}Nouvelle facture{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Nouvelle facture de vente</h3>
+  <a href="{{ url_for('ventes') }}" class="btn btn-outline-secondary btn-sm">← Retour aux ventes</a>
+</div>
+
+<div class="card card-stat p-3">
+  <form method="POST" id="facture-form">
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label">Client (optionnel)</label>
+        <select name="partner_id" class="form-select">
+          <option value="">— Non spécifié —</option>
+          {% for c in clients %}
+            <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Date</label>
+        <input type="date" name="date" class="form-control" value="{{ today }}" required>
+      </div>
+      <div class="col-md-5">
+        <label class="form-label">Note (optionnel)</label>
+        <input type="text" name="note" class="form-control" placeholder="ex: livraison au marché central">
+      </div>
+    </div>
+
+    <label class="form-label">Produits de la facture</label>
+    <div class="table-responsive">
+      <table class="table table-sm align-middle" id="lignes-table">
+        <thead>
+          <tr>
+            <th style="min-width:220px">Produit</th>
+            <th style="width:130px">Quantité</th>
+            <th style="width:150px">Prix unitaire (FCFA)</th>
+            <th style="width:130px" class="text-end">Sous-total</th>
+            <th style="width:40px"></th>
+          </tr>
+        </thead>
+        <tbody id="lignes-body">
+          <!-- lignes ajoutées dynamiquement en JS -->
+        </tbody>
+        <tfoot>
+          <tr>
+            <th colspan="3" class="text-end">Total de la facture :</th>
+            <th class="text-end" id="total-facture">0 FCFA</th>
+            <th></th>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <button type="button" class="btn btn-outline-success btn-sm mb-3" id="ajouter-ligne">
+      <i class="bi bi-plus-lg"></i> Ajouter un produit
+    </button>
+
+    <div>
+      <button type="submit" class="btn btn-success">Enregistrer la facture</button>
+    </div>
+  </form>
+</div>
+
+<template id="ligne-template">
+  <tr class="ligne-row">
+    <td>
+      <select name="product_id[]" class="form-select form-select-sm produit-select" required>
+        <option value="">— Choisir un produit —</option>
+        {% for p in produits %}
+          <option value="{{ p.id }}" data-price="{{ p.prix_vente_defaut }}" data-stock="{{ p.stock }}" data-unit="{{ p.unit }}">
+            {{ p.name }} (stock: {{ '%.0f'|format(p.stock) }} {{ p.unit }})
+          </option>
+        {% endfor %}
+      </select>
+    </td>
+    <td><input type="number" step="any" min="0.01" name="quantity[]" class="form-control form-control-sm qty-input" required></td>
+    <td><input type="number" step="any" min="0" name="unit_price[]" class="form-control form-control-sm price-input" required></td>
+    <td class="text-end sous-total">0</td>
+    <td><button type="button" class="btn btn-sm btn-outline-danger retirer-ligne">×</button></td>
+  </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var body = document.getElementById('lignes-body');
+  var template = document.getElementById('ligne-template');
+  var totalEl = document.getElementById('total-facture');
+
+  function recalcTotal() {
+    var total = 0;
+    body.querySelectorAll('.ligne-row').forEach(function (row) {
+      var qty = parseFloat(row.querySelector('.qty-input').value) || 0;
+      var price = parseFloat(row.querySelector('.price-input').value) || 0;
+      var sousTotal = qty * price;
+      row.querySelector('.sous-total').textContent = sousTotal.toLocaleString('fr-FR', {maximumFractionDigits: 0});
+      total += sousTotal;
+    });
+    totalEl.textContent = total.toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' FCFA';
+  }
+
+  function ajouterLigne() {
+    var clone = template.content.cloneNode(true);
+    var row = clone.querySelector('.ligne-row');
+
+    row.querySelector('.produit-select').addEventListener('change', function () {
+      var opt = this.options[this.selectedIndex];
+      var price = opt ? opt.getAttribute('data-price') : null;
+      var priceInput = row.querySelector('.price-input');
+      if (price && parseFloat(price) > 0) {
+        priceInput.value = price;
+      }
+      recalcTotal();
+    });
+    row.querySelector('.qty-input').addEventListener('input', recalcTotal);
+    row.querySelector('.price-input').addEventListener('input', recalcTotal);
+    row.querySelector('.retirer-ligne').addEventListener('click', function () {
+      row.remove();
+      recalcTotal();
+    });
+
+    body.appendChild(row);
+  }
+
+  document.getElementById('ajouter-ligne').addEventListener('click', ajouterLigne);
+
+  // Démarre avec deux lignes vides pour aller droit au but.
+  ajouterLigne();
+  ajouterLigne();
+
+  document.getElementById('facture-form').addEventListener('submit', function (e) {
+    var lignesValides = 0;
+    body.querySelectorAll('.ligne-row').forEach(function (row) {
+      if (row.querySelector('.produit-select').value && parseFloat(row.querySelector('.qty-input').value) > 0) {
+        lignesValides++;
+      }
+    });
+    if (lignesValides === 0) {
+      e.preventDefault();
+      alert('Ajoutez au moins un produit avec une quantité à la facture.');
+    }
+  });
+});
+</script>
+{% endblock %}
