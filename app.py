@@ -70,21 +70,35 @@ if IS_PRODUCTION and app.config["SECRET_KEY"] == "senavipro-secret-key-change-en
 db.init_app(app)
 
 
+def _ensure_column(inspector, table, column, ddl_type="INTEGER"):
+    """Ajoute une colonne à une table existante si elle manque encore —
+    db.create_all() ne crée que les tables absentes, il ne modifie jamais une
+    table déjà présente en base. Sans effet (et sûr à ré-exécuter) si la
+    colonne existe déjà."""
+    if table not in inspector.get_table_names():
+        return
+    colonnes = {c["name"] for c in inspector.get_columns(table)}
+    if column not in colonnes:
+        with db.engine.begin() as conn:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"))
+
+
 def _ensure_schema_upgrades():
     """Applique en base les petites évolutions de schéma qui ne sont pas gérées par
     db.create_all() (celui-ci ne crée que les tables manquantes, il ne modifie pas
     les tables déjà existantes). Comme le projet n'utilise pas d'outil de migration
     (Alembic/Flask-Migrate), on fait ici une mise à jour idempotente, compatible
-    SQLite (local) et PostgreSQL (production) : ajoute la colonne sale_id à la
-    table transactions si elle n'existe pas encore (nécessaire pour regrouper
-    plusieurs produits vendus au même client sous une seule facture)."""
+    SQLite (local) et PostgreSQL (production) :
+    - ajoute la colonne sale_id à la table transactions si elle n'existe pas
+      encore (nécessaire pour regrouper plusieurs produits vendus au même
+      client sous une seule facture) ;
+    - ajoute la colonne sale_id à la table orders si elle n'existe pas encore
+      (nécessaire pour relier une commande confirmée à la facture générée —
+      une table orders a pu être créée par un déploiement antérieur à
+      l'ajout de cette colonne au modèle Order)."""
     inspector = inspect(db.engine)
-    if "transactions" not in inspector.get_table_names():
-        return
-    colonnes = {c["name"] for c in inspector.get_columns("transactions")}
-    if "sale_id" not in colonnes:
-        with db.engine.begin() as conn:
-            conn.execute(text("ALTER TABLE transactions ADD COLUMN sale_id INTEGER"))
+    _ensure_column(inspector, "transactions", "sale_id", "INTEGER")
+    _ensure_column(inspector, "orders", "sale_id", "INTEGER")
 
 
 # Crée automatiquement les tables et données par défaut manquantes à chaque
