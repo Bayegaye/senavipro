@@ -1291,6 +1291,30 @@ def supprimer_partenaire(type_, pid):
     return redirect(url_for("partenaires", type_=type_))
 
 
+@app.route("/partenaires/<type_>/<int:pid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_partenaire(type_, pid):
+    """Permet à l'administrateur de corriger les informations d'un client ou
+    fournisseur déjà enregistré (nom, téléphone, adresse, note)."""
+    p = db.session.get(Partner, pid)
+    if not p:
+        abort(404)
+
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Le nom est obligatoire.", "danger")
+        return redirect(url_for("partenaires", type_=type_))
+
+    p.name = name
+    p.phone = request.form.get("phone", "").strip()
+    p.address = request.form.get("address", "").strip()
+    p.note = request.form.get("note", "").strip()
+    db.session.commit()
+    flash(("Client" if type_ == "client" else "Fournisseur") + " modifié avec succès.", "success")
+    return redirect(url_for("partenaires", type_=type_))
+
+
 # ---------- Rapports ----------
 
 @app.route("/rapports")
