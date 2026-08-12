@@ -249,33 +249,22 @@ def _get_or_create_client(name):
 
 # ---------- Tableau de bord ----------
 
-def _prix_achat_moyen(product_id):
-    """Prix d'achat moyen pondéré par quantité d'un produit, calculé à partir
-    de l'historique réel des transactions d'achat enregistrées (prix payé au
-    fournisseur à chaque achat), pas d'un prix par défaut fixe. Retombe sur le
-    prix d'achat par défaut du produit si aucun achat n'a jamais été
-    enregistré pour lui."""
-    row = (
-        db.session.query(
-            func.coalesce(func.sum(Transaction.quantity * Transaction.unit_price), 0.0),
-            func.coalesce(func.sum(Transaction.quantity), 0.0),
-        )
-        .filter(Transaction.type == "achat", Transaction.product_id == product_id)
-        .one()
-    )
-    total_cout, total_qte = row
-    if total_qte:
-        return total_cout / total_qte
+def _prix_achat_reel(product_id):
+    """Prix d'achat réel d'un produit, tel que défini sur sa fiche produit
+    (champ « prix d'achat par défaut » de la page Produits). Ce prix reflète
+    ce que l'entreprise paie réellement à ses fournisseurs et sert de
+    référence unique pour calculer le coût des produits vendus, plutôt qu'une
+    moyenne calculée sur l'historique des achats."""
     product = db.session.get(Product, product_id)
     return product.prix_achat_defaut if product else 0.0
 
 
 def _cout_produits_vendus(start=None, end=None):
-    """Coût d'achat (au prix moyen pondéré réellement payé) des produits
-    vendus sur la période — utilisé pour calculer la marge réelle des ventes,
-    plutôt que de comparer les ventes du jour aux achats du jour (qui n'ont
-    souvent aucun lien direct : un produit vendu aujourd'hui peut avoir été
-    acheté un autre jour)."""
+    """Coût d'achat (au prix d'achat réel défini sur chaque fiche produit) des
+    produits vendus sur la période — utilisé pour calculer la marge réelle des
+    ventes, plutôt que de comparer les ventes du jour aux achats du jour (qui
+    n'ont souvent aucun lien direct : un produit vendu aujourd'hui peut avoir
+    été acheté un autre jour)."""
     q = db.session.query(
         Transaction.product_id, func.coalesce(func.sum(Transaction.quantity), 0.0)
     ).filter(Transaction.type == "vente")
@@ -285,7 +274,7 @@ def _cout_produits_vendus(start=None, end=None):
         q = q.filter(Transaction.date <= end)
     total_cout = 0.0
     for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
-        total_cout += (qte_vendue or 0.0) * _prix_achat_moyen(product_id)
+        total_cout += (qte_vendue or 0.0) * _prix_achat_reel(product_id)
     return total_cout
 
 
