@@ -21,25 +21,31 @@
 </form>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Total ventes</div>
       <div class="stat-value text-success">{{ '%.0f'|format(ventes_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Achats marchandises</div>
       <div class="stat-value text-danger">{{ '%.0f'|format(achats_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Dépenses générales</div>
       <div class="stat-value text-danger">{{ '%.0f'|format(depenses_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Pertes (cassé/périmé)</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(pertes_total) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-4">
     <div class="card card-stat p-3">
       <div class="text-muted small">Bénéfice réel</div>
       <div class="stat-value {% if benefice >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(benefice) }} FCFA</div>

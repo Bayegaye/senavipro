@@ -1543,6 +1543,18 @@ def rapports():
         .all()
     )
 
+    # Bénéfice réel de la période, calculé exactement comme sur le tableau de
+    # bord : marge sur les produits vendus (prix de vente − coût d'achat réel
+    # de la fiche produit) moins les dépenses générales et la valeur d'achat
+    # des pertes (produits cassés/périmés) sur la période — et non plus
+    # ventes − achats − dépenses, qui ne reflète pas la rentabilité réelle si
+    # les achats et les ventes de la période ne portent pas sur les mêmes
+    # produits/quantités.
+    cout_vendus_total = _cout_produits_vendus(date_debut_d, date_fin_d)
+    pertes_total = _valeur_pertes(date_debut_d, date_fin_d)
+    marge_totale = ventes_total - cout_vendus_total
+    benefice = marge_totale - depenses_total - pertes_total
+
     return render_template(
         "rapports.html",
         date_debut=date_debut,
@@ -1550,7 +1562,8 @@ def rapports():
         ventes_total=ventes_total,
         achats_total=achats_total,
         depenses_total=depenses_total,
-        benefice=ventes_total - achats_total - depenses_total,
+        pertes_total=pertes_total,
+        benefice=benefice,
         par_produit=par_produit,
         par_categorie_depense=par_categorie_depense,
         labels=labels,
