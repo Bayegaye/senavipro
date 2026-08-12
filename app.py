@@ -17,6 +17,15 @@ from models import db, User, Partner, Product, Transaction, Expense, Sale, Order
 
 APP_NAME = "SENAVIPRO"
 
+# Coordonnées de l'entreprise affichées sur les factures.
+COMPANY_INFO = {
+    "rccm": "RCCM N° 2025M076",
+    "ninea": "NINEA N° 009458987 212",
+    "fra": "FRA N° 1839/2025/FRA",
+    "address": "Sangalkam, Rufisque, Dakar",
+    "phone": "221 78 207 87 87",
+}
+
 
 def _database_uri():
     """Lit DATABASE_URL (fourni par la plupart des hébergeurs pour Postgres).
@@ -168,7 +177,7 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    return {"app_name": APP_NAME, "now": datetime.utcnow()}
+    return {"app_name": APP_NAME, "now": datetime.utcnow(), "company_info": COMPANY_INFO}
 
 
 # ---------- Authentification ----------

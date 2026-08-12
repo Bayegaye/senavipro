@@ -16,12 +16,20 @@
 <div class="card card-stat p-4">
   <div class="row mb-4">
     <div class="col-md-6">
-      <h5 class="mb-1">{{ app_name }}</h5>
-      <div class="text-muted small">Facture n° {{ vente.numero }}</div>
-      <div class="text-muted small">Date : {{ vente.date.strftime('%d/%m/%Y') }}</div>
-      <div class="text-muted small">Enregistrée par : {{ vente.user.full_name if vente.user else '—' }}</div>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="{{ app_name }}" style="height:48px;width:48px;object-fit:cover;border-radius:6px;">
+        <h5 class="mb-0">{{ app_name }}</h5>
+      </div>
+      <div class="text-muted small">{{ company_info.address }}</div>
+      <div class="text-muted small">Tél : {{ company_info.phone }}</div>
+      <div class="text-muted small">{{ company_info.rccm }}</div>
+      <div class="text-muted small">{{ company_info.ninea }}</div>
+      <div class="text-muted small">{{ company_info.fra }}</div>
     </div>
     <div class="col-md-6 text-md-end">
+      <div class="text-muted small">Facture n° {{ vente.numero }}</div>
+      <div class="text-muted small">Date : {{ vente.date.strftime('%d/%m/%Y') }}</div>
+      <div class="text-muted small mb-3">Enregistrée par : {{ vente.user.full_name if vente.user else '—' }}</div>
       <strong>Client</strong>
       <div>{{ vente.partner.name if vente.partner else 'Client non spécifié' }}</div>
       {% if vente.partner and vente.partner.phone %}<div class="text-muted small">{{ vente.partner.phone }}</div>{% endif %}
