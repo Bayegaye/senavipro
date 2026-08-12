@@ -1,8 +1,0 @@
-Flask==3.0.3
-Flask-SQLAlchemy==3.1.1
-Flask-Login==0.6.3
-Werkzeug==3.0.4
-
-# Serveur de production (déploiement en ligne). Pur Python, aucune
-# compilation requise : sans risque à installer même en usage local.
-gunicorn==22.0.0
