@@ -386,11 +386,14 @@ def ventes():
     if request.method == "POST":
         _create_transaction("vente")
         return redirect(url_for("ventes"))
+    transactions = _list_transactions("vente")
     return render_template(
         "transactions.html",
         type_="vente",
         titre="Ventes",
-        transactions=_list_transactions("vente"),
+        transactions=transactions,
+        quantite_totale=sum(t.quantity for t in transactions),
+        total_montant=sum(t.total for t in transactions),
         produits=Product.query.order_by(Product.name).all(),
         partenaires=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
         today=date.today().isoformat(),
@@ -403,14 +406,60 @@ def achats():
     if request.method == "POST":
         _create_transaction("achat")
         return redirect(url_for("achats"))
+    transactions = _list_transactions("achat")
     return render_template(
         "transactions.html",
         type_="achat",
         titre="Achats",
-        transactions=_list_transactions("achat"),
+        transactions=transactions,
+        quantite_totale=sum(t.quantity for t in transactions),
+        total_montant=sum(t.total for t in transactions),
         produits=Product.query.order_by(Product.name).all(),
         partenaires=Partner.query.filter_by(type="fournisseur").order_by(Partner.name).all(),
         today=date.today().isoformat(),
+    )
+
+
+@app.route("/ventes/export.csv")
+@login_required
+def export_ventes_csv():
+    return _export_transactions_csv("vente", "senavipro_ventes")
+
+
+@app.route("/achats/export.csv")
+@login_required
+def export_achats_csv():
+    return _export_transactions_csv("achat", "senavipro_achats")
+
+
+def _export_transactions_csv(type_, filename_prefix):
+    """Exporte au format CSV (ouvrable directement dans Excel) les
+    transactions correspondant aux mêmes filtres (produit, client/fournisseur,
+    période) que ceux actuellement appliqués sur la page Ventes/Achats."""
+    transactions = _list_transactions(type_)
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Date", "Produit", "Client" if type_ == "vente" else "Fournisseur",
+        "Quantité", "Prix unitaire", "Total", "Note", "Enregistré par",
+    ])
+    for t in transactions:
+        writer.writerow([
+            t.date.isoformat(),
+            t.product.name if t.product else "",
+            t.partner.name if t.partner else "",
+            t.quantity, t.unit_price, t.total,
+            t.note or "",
+            t.user.full_name if t.user else "",
+        ])
+    writer.writerow([])
+    writer.writerow(["", "", "Quantité totale", sum(t.quantity for t in transactions)])
+    writer.writerow(["", "", "Total", "", "", sum(t.total for t in transactions)])
+    today_str = date.today().isoformat()
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename={filename_prefix}_{today_str}.csv"},
     )
 
 

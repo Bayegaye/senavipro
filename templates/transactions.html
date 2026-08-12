@@ -87,6 +87,17 @@
         </div>
       </form>
 
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <div class="text-muted small">
+          Quantité totale : <strong>{{ '%.0f'|format(quantite_totale) }}</strong>
+          &nbsp;·&nbsp; Total : <strong>{{ '%.0f'|format(total_montant) }} FCFA</strong>
+        </div>
+        <a class="btn btn-sm btn-outline-success"
+           href="{{ url_for('export_ventes_csv' if type_=='vente' else 'export_achats_csv', **request.args) }}">
+          <i class="bi bi-file-earmark-excel"></i> Exporter (Excel/CSV)
+        </a>
+      </div>
+
       <div class="table-responsive">
       <table class="table table-sm table-hover">
         <thead>
@@ -132,7 +143,9 @@
         {% if transactions %}
         <tfoot>
           <tr class="table-light">
-            <th colspan="5" class="text-end">Total :</th>
+            <th colspan="3" class="text-end">Total :</th>
+            <th>{{ '%.0f'|format(quantite_totale) }}</th>
+            <th></th>
             <th>{{ '%.0f'|format(transactions|sum(attribute='total')) }} FCFA</th>
             <th colspan="{{ (2 if type_=='vente' else 1) + (1 if current_user.is_admin else 0) }}"></th>
           </tr>
