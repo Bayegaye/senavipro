@@ -35,6 +35,21 @@ def _database_uri():
     return url
 
 
+def _parse_date(value, default=None):
+    """Convertit une chaîne 'YYYY-MM-DD' (ex: venant de request.args) en objet
+    date Python. Nécessaire pour PostgreSQL, qui refuse de comparer une
+    colonne DATE à une chaîne de texte brute (contrairement à SQLite, plus
+    permissif) : sans cette conversion, les filtres par date provoquaient une
+    erreur 500 en production ("operator does not exist: date >= character
+    varying")."""
+    if not value:
+        return default
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError:
+        return default
+
+
 IS_PRODUCTION = os.environ.get("DATABASE_URL") is not None
 
 app = Flask(__name__)
@@ -234,8 +249,8 @@ def _list_transactions(type_):
     q = Transaction.query.filter_by(type=type_)
     product_id = request.args.get("product_id", type=int)
     partner_id = request.args.get("partner_id", type=int)
-    date_debut = request.args.get("date_debut")
-    date_fin = request.args.get("date_fin")
+    date_debut = _parse_date(request.args.get("date_debut"))
+    date_fin = _parse_date(request.args.get("date_fin"))
 
     if product_id:
         q = q.filter(Transaction.product_id == product_id)
@@ -800,8 +815,8 @@ def depenses():
         return redirect(url_for("depenses"))
 
     q = Expense.query
-    date_debut = request.args.get("date_debut")
-    date_fin = request.args.get("date_fin")
+    date_debut = _parse_date(request.args.get("date_debut"))
+    date_fin = _parse_date(request.args.get("date_fin"))
     if date_debut:
         q = q.filter(Expense.date >= date_debut)
     if date_fin:
@@ -915,8 +930,10 @@ def supprimer_partenaire(type_, pid):
 def rapports():
     date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
     date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut_d = _parse_date(date_debut, default=(date.today() - timedelta(days=30)))
+    date_fin_d = _parse_date(date_fin, default=date.today())
 
-    base_q = Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
+    base_q = Transaction.query.filter(Transaction.date >= date_debut_d, Transaction.date <= date_fin_d)
 
     ventes_total = base_q.filter(Transaction.type == "vente").with_entities(
         func.coalesce(func.sum(Transaction.total), 0.0)
@@ -931,7 +948,7 @@ def rapports():
             func.sum(Transaction.quantity), func.sum(Transaction.total)
         )
         .join(Product, Product.id == Transaction.product_id)
-        .filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
+        .filter(Transaction.date >= date_debut_d, Transaction.date <= date_fin_d)
         .group_by(Product.name, Transaction.type)
         .all()
     )
@@ -940,7 +957,7 @@ def rapports():
         db.session.query(
             Transaction.date, Transaction.type, func.sum(Transaction.total)
         )
-        .filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
+        .filter(Transaction.date >= date_debut_d, Transaction.date <= date_fin_d)
         .group_by(Transaction.date, Transaction.type)
         .order_by(Transaction.date)
         .all()
@@ -956,12 +973,12 @@ def rapports():
             achats_par_jour[d.isoformat()] = total
 
     depenses_total = db.session.query(func.coalesce(func.sum(Expense.amount), 0.0)).filter(
-        Expense.date >= date_debut, Expense.date <= date_fin
+        Expense.date >= date_debut_d, Expense.date <= date_fin_d
     ).scalar()
 
     par_categorie_depense = (
         db.session.query(Expense.category, func.sum(Expense.amount))
-        .filter(Expense.date >= date_debut, Expense.date <= date_fin)
+        .filter(Expense.date >= date_debut_d, Expense.date <= date_fin_d)
         .group_by(Expense.category)
         .order_by(func.sum(Expense.amount).desc())
         .all()
@@ -988,8 +1005,10 @@ def rapports():
 def export_csv():
     date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
     date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut_d = _parse_date(date_debut, default=(date.today() - timedelta(days=30)))
+    date_fin_d = _parse_date(date_fin, default=date.today())
     transactions = (
-        Transaction.query.filter(Transaction.date >= date_debut, Transaction.date <= date_fin)
+        Transaction.query.filter(Transaction.date >= date_debut_d, Transaction.date <= date_fin_d)
         .order_by(Transaction.date)
         .all()
     )
@@ -1015,8 +1034,10 @@ def export_csv():
 def export_depenses_csv():
     date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
     date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut_d = _parse_date(date_debut, default=(date.today() - timedelta(days=30)))
+    date_fin_d = _parse_date(date_fin, default=date.today())
     depenses = (
-        Expense.query.filter(Expense.date >= date_debut, Expense.date <= date_fin)
+        Expense.query.filter(Expense.date >= date_debut_d, Expense.date <= date_fin_d)
         .order_by(Expense.date)
         .all()
     )
