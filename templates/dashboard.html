@@ -32,6 +32,12 @@
   </div>
   <div class="col-md-3">
     <div class="card card-stat p-3">
+      <div class="text-muted small">Pertes (cassé/périmé)</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(pertes_jour) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
       <div class="text-muted small">Bénéfice réel du jour</div>
       <div class="stat-value {% if benefice_jour >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(benefice_jour) }} FCFA</div>
     </div>
@@ -56,6 +62,12 @@
     <div class="card card-stat p-3">
       <div class="text-muted small">Dépenses générales</div>
       <div class="stat-value text-danger">{{ '%.0f'|format(depenses_mois) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Pertes (cassé/périmé)</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(pertes_mois) }} FCFA</div>
     </div>
   </div>
   <div class="col-md-3">

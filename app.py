@@ -13,7 +13,7 @@ from flask_login import (
 )
 from sqlalchemy import func, inspect, text
 
-from models import db, User, Partner, Product, Transaction, Expense, Sale, Order
+from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss
 
 APP_NAME = "SENAVIPRO"
 
@@ -278,6 +278,24 @@ def _cout_produits_vendus(start=None, end=None):
     return total_cout
 
 
+def _valeur_pertes(start=None, end=None):
+    """Valeur d'achat (au prix d'achat réel de la fiche produit) des produits
+    cassés/périmés/perdus sur la période — cette valeur est une perte sèche
+    pour l'entreprise (le produit est sorti du stock sans générer de revenu)
+    et doit donc être soustraite du bénéfice réel."""
+    q = db.session.query(
+        Loss.product_id, func.coalesce(func.sum(Loss.quantity), 0.0)
+    )
+    if start:
+        q = q.filter(Loss.date >= start)
+    if end:
+        q = q.filter(Loss.date <= end)
+    total = 0.0
+    for product_id, qte_perdue in q.group_by(Loss.product_id).all():
+        total += (qte_perdue or 0.0) * _prix_achat_reel(product_id)
+    return total
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -308,12 +326,15 @@ def dashboard():
     depenses_jour = sum_expenses(today, today)
 
     # Bénéfice = marge réelle sur les produits vendus (prix de vente − coût
-    # d'achat moyen pondéré de ces mêmes produits, indépendamment du jour où
-    # ils ont été achetés), moins les dépenses de la période — et non plus
+    # d'achat réel de ces mêmes produits, indépendamment du jour où ils ont
+    # été achetés), moins les dépenses de la période et moins la valeur
+    # d'achat des produits cassés/périmés/perdus sur la période — et non plus
     # ventes − achats de la période, qui ne reflète pas la rentabilité réelle
     # si les achats et les ventes ne portent pas sur les mêmes produits/jours.
     cout_vendus_mois = _cout_produits_vendus(start_month, today)
     cout_vendus_jour = _cout_produits_vendus(today, today)
+    pertes_mois = _valeur_pertes(start_month, today)
+    pertes_jour = _valeur_pertes(today, today)
     marge_mois = ventes_mois - cout_vendus_mois
     marge_jour = ventes_jour - cout_vendus_jour
 
@@ -328,11 +349,13 @@ def dashboard():
         ventes_mois=ventes_mois,
         achats_mois=achats_mois,
         depenses_mois=depenses_mois,
-        benefice_mois=marge_mois - depenses_mois,
+        pertes_mois=pertes_mois,
+        benefice_mois=marge_mois - depenses_mois - pertes_mois,
         ventes_jour=ventes_jour,
         achats_jour=achats_jour,
         depenses_jour=depenses_jour,
-        benefice_jour=marge_jour - depenses_jour,
+        pertes_jour=pertes_jour,
+        benefice_jour=marge_jour - depenses_jour - pertes_jour,
         produits=produits,
         dernieres_transactions=dernieres_transactions,
         alertes_stock=alertes_stock,
@@ -1200,6 +1223,161 @@ def modifier_depense(eid):
     return redirect(url_for("depenses"))
 
 
+# ---------- Pertes (produits cassés / périmés / perdus) ----------
+
+RAISONS_PERTE = ["Cassé", "Périmé", "Volé", "Détérioré", "Autre"]
+
+
+@app.route("/pertes", methods=["GET", "POST"])
+@login_required
+def pertes():
+    if request.method == "POST":
+        try:
+            product_id = int(request.form["product_id"])
+            quantity = float(request.form["quantity"])
+        except (KeyError, ValueError):
+            flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+            return redirect(url_for("pertes"))
+
+        reason = request.form.get("reason", "").strip()
+        ldate = request.form.get("date") or date.today().isoformat()
+
+        if quantity <= 0:
+            flash("La quantité doit être positive.", "danger")
+            return redirect(url_for("pertes"))
+
+        product = db.session.get(Product, product_id)
+        if not product:
+            flash("Produit introuvable.", "danger")
+            return redirect(url_for("pertes"))
+
+        if product.stock < quantity:
+            flash(
+                f"Stock insuffisant pour {product.name} "
+                f"(disponible : {product.stock:g} {product.unit}).",
+                "danger",
+            )
+            return redirect(url_for("pertes"))
+
+        try:
+            perte_date = datetime.strptime(ldate, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Date invalide.", "danger")
+            return redirect(url_for("pertes"))
+
+        perte = Loss(
+            product_id=product.id,
+            quantity=quantity,
+            reason=reason,
+            date=perte_date,
+            user_id=current_user.id,
+        )
+        product.stock -= quantity
+        db.session.add(perte)
+        db.session.commit()
+        flash("Perte enregistrée.", "success")
+        return redirect(url_for("pertes"))
+
+    q = Loss.query
+    date_debut = _parse_date(request.args.get("date_debut"))
+    date_fin = _parse_date(request.args.get("date_fin"))
+    if date_debut:
+        q = q.filter(Loss.date >= date_debut)
+    if date_fin:
+        q = q.filter(Loss.date <= date_fin)
+    liste = q.order_by(Loss.date.desc(), Loss.created_at.desc()).all()
+
+    valeur_totale = sum((l.product.prix_achat_defaut if l.product else 0.0) * l.quantity for l in liste)
+
+    return render_template(
+        "pertes.html",
+        liste=liste,
+        raisons=RAISONS_PERTE,
+        produits=Product.query.order_by(Product.name).all(),
+        valeur_totale=valeur_totale,
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/pertes/<int:lid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_perte(lid):
+    l = db.session.get(Loss, lid)
+    if l:
+        product = db.session.get(Product, l.product_id)
+        if product:
+            product.stock += l.quantity
+        db.session.delete(l)
+        db.session.commit()
+        flash("Perte supprimée. Le stock a été restitué.", "info")
+    return redirect(url_for("pertes"))
+
+
+@app.route("/pertes/<int:lid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_perte(lid):
+    """Permet à l'administrateur de corriger une perte déjà enregistrée
+    (produit, quantité, raison, date) en cas d'erreur de saisie. Le stock est
+    réajusté : l'effet de l'ancienne valeur est d'abord annulé, puis celui de
+    la nouvelle est appliqué."""
+    l = db.session.get(Loss, lid)
+    if not l:
+        abort(404)
+
+    try:
+        product_id = int(request.form["product_id"])
+        quantity = float(request.form["quantity"])
+    except (KeyError, ValueError):
+        flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+        return redirect(url_for("pertes"))
+
+    if quantity <= 0:
+        flash("La quantité doit être positive.", "danger")
+        return redirect(url_for("pertes"))
+
+    new_product = db.session.get(Product, product_id)
+    if not new_product:
+        flash("Produit introuvable.", "danger")
+        return redirect(url_for("pertes"))
+
+    reason = request.form.get("reason", "").strip()
+    ldate = request.form.get("date") or l.date.isoformat()
+    try:
+        new_date = datetime.strptime(ldate, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Date invalide.", "danger")
+        return redirect(url_for("pertes"))
+
+    # Annule l'effet de l'ancienne perte sur le stock du produit d'origine.
+    old_product = db.session.get(Product, l.product_id)
+    if old_product:
+        old_product.stock += l.quantity
+
+    stock_apres_annulation = (
+        new_product.stock if new_product.id != (old_product.id if old_product else None) else old_product.stock
+    )
+    if stock_apres_annulation < quantity:
+        db.session.rollback()
+        flash(
+            f"Stock insuffisant pour {new_product.name} "
+            f"(disponible : {stock_apres_annulation:g} {new_product.unit}).",
+            "danger",
+        )
+        return redirect(url_for("pertes"))
+
+    l.product_id = new_product.id
+    l.quantity = quantity
+    l.reason = reason
+    l.date = new_date
+    new_product.stock -= quantity
+
+    db.session.commit()
+    flash("Perte modifiée avec succès.", "success")
+    return redirect(url_for("pertes"))
+
+
 # ---------- Stock ----------
 
 @app.route("/stock", methods=["GET", "POST"])
@@ -1434,6 +1612,35 @@ def export_depenses_csv():
         output.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename=senavipro_depenses_{date_debut}_{date_fin}.csv"},
+    )
+
+
+@app.route("/pertes/export.csv")
+@login_required
+def export_pertes_csv():
+    date_debut = request.args.get("date_debut") or (date.today() - timedelta(days=30)).isoformat()
+    date_fin = request.args.get("date_fin") or date.today().isoformat()
+    date_debut_d = _parse_date(date_debut, default=(date.today() - timedelta(days=30)))
+    date_fin_d = _parse_date(date_fin, default=date.today())
+    pertes_liste = (
+        Loss.query.filter(Loss.date >= date_debut_d, Loss.date <= date_fin_d)
+        .order_by(Loss.date)
+        .all()
+    )
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["Date", "Produit", "Quantité", "Raison", "Valeur (prix d'achat)", "Enregistré par"])
+    for l in pertes_liste:
+        prix = l.product.prix_achat_defaut if l.product else 0.0
+        writer.writerow([
+            l.date.isoformat(), l.product.name if l.product else "",
+            l.quantity, l.reason or "", prix * l.quantity,
+            l.user.full_name if l.user else "",
+        ])
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": f"attachment;filename=senavipro_pertes_{date_debut}_{date_fin}.csv"},
     )
 
 

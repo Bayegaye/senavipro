@@ -43,6 +43,7 @@
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='produits' %}active{% endif %}" href="{{ url_for('produits') }}">Produits</a></li>
         {% endif %}
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='depenses' %}active{% endif %}" href="{{ url_for('depenses') }}">Dépenses</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint=='pertes' %}active{% endif %}" href="{{ url_for('pertes') }}">Pertes</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='partenaires' and request.view_args.type_=='client' %}active{% endif %}" href="{{ url_for('partenaires', type_='client') }}">Clients</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='partenaires' and request.view_args.type_=='fournisseur' %}active{% endif %}" href="{{ url_for('partenaires', type_='fournisseur') }}">Fournisseurs</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='rapports' %}active{% endif %}" href="{{ url_for('rapports') }}">Rapports</a></li>

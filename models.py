@@ -72,6 +72,23 @@ class Expense(db.Model):
     user = db.relationship("User")
 
 
+class Loss(db.Model):
+    """Produits cassés, périmés ou perdus : sortent du stock comme une vente
+    mais ne rapportent aucun revenu — leur valeur d'achat est donc soustraite
+    du bénéfice réel plutôt que d'être ignorée."""
+    __tablename__ = "losses"
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    reason = db.Column(db.String(128))
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    product = db.relationship("Product")
+    user = db.relationship("User")
+
+
 class Sale(db.Model):
     """Une facture de vente : regroupe l'achat d'un ou plusieurs produits par un
     même client, réglés ensemble, sous un seul numéro de facture. Chaque produit
