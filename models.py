@@ -72,12 +72,34 @@ class Expense(db.Model):
     user = db.relationship("User")
 
 
+class Sale(db.Model):
+    """Une facture de vente : regroupe l'achat d'un ou plusieurs produits par un
+    même client, réglés ensemble, sous un seul numéro de facture. Chaque produit
+    de la facture correspond à une ligne (Transaction de type 'vente') rattachée
+    à cette Sale via Transaction.sale_id."""
+    __tablename__ = "sales"
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.String(30), unique=True, nullable=False)
+    partner_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=True)
+    total = db.Column(db.Float, nullable=False, default=0)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    partner = db.relationship("Partner")
+    user = db.relationship("User")
+    lignes = db.relationship(
+        "Transaction", backref="sale", lazy="dynamic", order_by="Transaction.id"
+    )
+
+
 class Transaction(db.Model):
     __tablename__ = "transactions"
     id = db.Column(db.Integer, primary_key=True)
     type = db.Column(db.String(10), nullable=False)  # vente | achat
     product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
     partner_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True)
     quantity = db.Column(db.Float, nullable=False)
     unit_price = db.Column(db.Float, nullable=False)
     total = db.Column(db.Float, nullable=False)
@@ -87,3 +109,29 @@ class Transaction(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     user = db.relationship("User")
+
+
+class Order(db.Model):
+    """Commande d'un client : réserve une quantité de stock avant d'être
+    transformée en vente (à la confirmation) ou annulée (la réservation est
+    alors libérée sans impact sur le stock, qui n'est modifié qu'à la
+    confirmation)."""
+    __tablename__ = "orders"
+    id = db.Column(db.Integer, primary_key=True)
+    client_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey("products.id"), nullable=False)
+    quantity = db.Column(db.Float, nullable=False)
+    unit_price = db.Column(db.Float, nullable=False)
+    total = db.Column(db.Float, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="en_attente")  # en_attente | confirmee | annulee
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    date_confirmation = db.Column(db.Date, nullable=True)
+    note = db.Column(db.String(256))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    client = db.relationship("Partner")
+    product = db.relationship("Product")
+    user = db.relationship("User")
+    sale = db.relationship("Sale")

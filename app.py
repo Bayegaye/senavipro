@@ -11,9 +11,9 @@ from flask import (
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
 
-from models import db, User, Partner, Product, Transaction, Expense
+from models import db, User, Partner, Product, Transaction, Expense, Sale, Order
 
 APP_NAME = "SENAVIPRO"
 
@@ -54,12 +54,31 @@ if IS_PRODUCTION and app.config["SECRET_KEY"] == "senavipro-secret-key-change-en
 
 db.init_app(app)
 
+
+def _ensure_schema_upgrades():
+    """Applique en base les petites évolutions de schéma qui ne sont pas gérées par
+    db.create_all() (celui-ci ne crée que les tables manquantes, il ne modifie pas
+    les tables déjà existantes). Comme le projet n'utilise pas d'outil de migration
+    (Alembic/Flask-Migrate), on fait ici une mise à jour idempotente, compatible
+    SQLite (local) et PostgreSQL (production) : ajoute la colonne sale_id à la
+    table transactions si elle n'existe pas encore (nécessaire pour regrouper
+    plusieurs produits vendus au même client sous une seule facture)."""
+    inspector = inspect(db.engine)
+    if "transactions" not in inspector.get_table_names():
+        return
+    colonnes = {c["name"] for c in inspector.get_columns("transactions")}
+    if "sale_id" not in colonnes:
+        with db.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE transactions ADD COLUMN sale_id INTEGER"))
+
+
 # Crée automatiquement les tables et données par défaut manquantes à chaque
 # démarrage (opération sûre, sans effet si elles existent déjà) — évite les
 # erreurs "no such table" et fait apparaître les nouveaux produits par
 # défaut même sur une base de données déjà en service.
 with app.app_context():
     db.create_all()
+    _ensure_schema_upgrades()
     from seed import ensure_seed_data
     ensure_seed_data(verbose=False)
 
@@ -119,6 +138,41 @@ def logout():
 @login_required
 def index():
     return redirect(url_for("dashboard"))
+
+
+def _stock_reserve(product_id, exclude_order_id=None):
+    """Quantité totale réservée par les commandes clients en attente pour un
+    produit donné — permet de calculer le stock réellement disponible à la
+    vente (stock physique moins ce qui est déjà promis à d'autres clients)."""
+    q = db.session.query(func.coalesce(func.sum(Order.quantity), 0.0)).filter(
+        Order.product_id == product_id, Order.status == "en_attente"
+    )
+    if exclude_order_id:
+        q = q.filter(Order.id != exclude_order_id)
+    return q.scalar() or 0.0
+
+
+def _stock_disponible(product, exclude_order_id=None):
+    return product.stock - _stock_reserve(product.id, exclude_order_id=exclude_order_id)
+
+
+def _get_or_create_client(name):
+    """Retrouve un client existant par son nom (insensible à la casse) ou en
+    crée un nouveau à la volée — permet de saisir directement le nom du
+    client lors d'une vente ou d'une commande, sans passer par la page
+    Clients. Ne fait pas de commit : à intégrer dans la transaction en cours."""
+    name = (name or "").strip()
+    if not name:
+        return None
+    client = Partner.query.filter(
+        Partner.type == "client", func.lower(Partner.name) == name.lower()
+    ).first()
+    if client:
+        return client
+    client = Partner(name=name, type="client")
+    db.session.add(client)
+    db.session.flush()  # obtenir client.id sans commit prématuré
+    return client
 
 
 # ---------- Tableau de bord ----------
@@ -296,10 +350,335 @@ def supprimer_transaction(tid):
         else:
             product.stock -= tr.quantity
     type_ = tr.type
+    vente = db.session.get(Sale, tr.sale_id) if tr.sale_id else None
     db.session.delete(tr)
+    db.session.flush()
+    if vente:
+        # Recalcule le total de la facture (ou la supprime s'il ne reste plus
+        # aucun produit dedans) pour que la facture reste cohérente.
+        lignes_restantes = vente.lignes.all()
+        if lignes_restantes:
+            vente.total = sum(l.total for l in lignes_restantes)
+        else:
+            db.session.delete(vente)
     db.session.commit()
     flash("Transaction supprimée.", "info")
     return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+
+# ---------- Ventes multi-produits (facture unique par client) ----------
+
+def _next_sale_numero():
+    annee = datetime.utcnow().year
+    total = Sale.query.count()
+    return f"FAC-{annee}-{total + 1:05d}"
+
+
+@app.route("/ventes/nouvelle", methods=["GET", "POST"])
+@login_required
+def nouvelle_vente():
+    """Enregistre en une seule fois la vente de plusieurs produits à un même
+    client, avec génération d'une facture unique regroupant toutes les lignes."""
+    if request.method == "POST":
+        partner_id = request.form.get("partner_id") or None
+        vdate_raw = request.form.get("date") or date.today().isoformat()
+        note = request.form.get("note", "").strip()
+
+        product_ids = request.form.getlist("product_id[]")
+        quantities = request.form.getlist("quantity[]")
+        unit_prices = request.form.getlist("unit_price[]")
+
+        try:
+            vdate = datetime.strptime(vdate_raw, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Date invalide.", "danger")
+            return redirect(url_for("nouvelle_vente"))
+
+        lignes = []
+        for pid_raw, qty_raw, price_raw in zip(product_ids, quantities, unit_prices):
+            if not pid_raw or not qty_raw:
+                continue
+            try:
+                pid = int(pid_raw)
+                qty = float(qty_raw)
+                price = float(price_raw) if price_raw else 0.0
+            except ValueError:
+                flash("Une ligne de la facture contient une valeur invalide.", "danger")
+                return redirect(url_for("nouvelle_vente"))
+            if qty <= 0 or price < 0:
+                continue
+            lignes.append({"product_id": pid, "quantity": qty, "unit_price": price})
+
+        if not lignes:
+            flash("Ajoutez au moins un produit à la facture.", "danger")
+            return redirect(url_for("nouvelle_vente"))
+
+        # On vérifie tous les produits et les stocks avant de créer quoi que ce
+        # soit, pour ne jamais enregistrer une facture partiellement valide.
+        produits_par_id = {}
+        stock_demande = {}
+        for ligne in lignes:
+            pid = ligne["product_id"]
+            product = db.session.get(Product, pid)
+            if not product:
+                flash("Un des produits sélectionnés est introuvable.", "danger")
+                return redirect(url_for("nouvelle_vente"))
+            produits_par_id[pid] = product
+            stock_demande[pid] = stock_demande.get(pid, 0) + ligne["quantity"]
+
+        for pid, qty_totale in stock_demande.items():
+            product = produits_par_id[pid]
+            if product.stock < qty_totale:
+                flash(
+                    f"Stock insuffisant pour {product.name} "
+                    f"(disponible : {product.stock:g} {product.unit}, demandé : {qty_totale:g}).",
+                    "danger",
+                )
+                return redirect(url_for("nouvelle_vente"))
+
+        total = sum(l["quantity"] * l["unit_price"] for l in lignes)
+
+        vente = Sale(
+            numero=_next_sale_numero(),
+            partner_id=int(partner_id) if partner_id else None,
+            total=total,
+            date=vdate,
+            user_id=current_user.id,
+        )
+        db.session.add(vente)
+        db.session.flush()  # pour obtenir vente.id avant de créer les lignes
+
+        for ligne in lignes:
+            product = produits_par_id[ligne["product_id"]]
+            product.stock -= ligne["quantity"]
+            db.session.add(Transaction(
+                type="vente",
+                product_id=product.id,
+                partner_id=int(partner_id) if partner_id else None,
+                sale_id=vente.id,
+                quantity=ligne["quantity"],
+                unit_price=ligne["unit_price"],
+                total=ligne["quantity"] * ligne["unit_price"],
+                date=vdate,
+                note=note,
+                user_id=current_user.id,
+            ))
+
+        db.session.commit()
+        flash(
+            f"Facture {vente.numero} enregistrée : {len(lignes)} produit(s) pour un total de "
+            f"{total:.0f} FCFA.",
+            "success",
+        )
+        return redirect(url_for("facture_detail", sid=vente.id))
+
+    return render_template(
+        "vente_nouvelle.html",
+        produits=Product.query.order_by(Product.name).all(),
+        clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/factures")
+@login_required
+def factures():
+    liste = Sale.query.order_by(Sale.created_at.desc()).limit(300).all()
+    return render_template("factures.html", liste=liste)
+
+
+@app.route("/factures/<int:sid>")
+@login_required
+def facture_detail(sid):
+    vente = db.session.get(Sale, sid)
+    if not vente:
+        abort(404)
+    lignes = vente.lignes.all()
+    return render_template("facture.html", vente=vente, lignes=lignes)
+
+
+@app.route("/factures/<int:sid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_facture(sid):
+    vente = db.session.get(Sale, sid)
+    if not vente:
+        abort(404)
+    for ligne in vente.lignes.all():
+        product = db.session.get(Product, ligne.product_id)
+        if product:
+            product.stock += ligne.quantity
+        db.session.delete(ligne)
+    db.session.delete(vente)
+    db.session.commit()
+    flash("Facture supprimée et stock restitué.", "info")
+    return redirect(url_for("factures"))
+
+
+# ---------- Commandes clients ----------
+
+@app.route("/commandes", methods=["GET", "POST"])
+@login_required
+def commandes():
+    if request.method == "POST":
+        try:
+            product_id = int(request.form["product_id"])
+            quantity = float(request.form["quantity"])
+            unit_price = float(request.form["unit_price"])
+            cdate = request.form.get("date") or date.today().isoformat()
+            note = request.form.get("note", "").strip()
+        except (KeyError, ValueError):
+            flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+            return redirect(url_for("commandes"))
+
+        if quantity <= 0 or unit_price < 0:
+            flash("Quantité ou prix invalide.", "danger")
+            return redirect(url_for("commandes"))
+
+        client_name = request.form.get("client_name", "").strip()
+        if not client_name:
+            flash("Le nom du client est obligatoire.", "danger")
+            return redirect(url_for("commandes"))
+        # Le client est saisi directement au clavier (avec suggestions) : on
+        # retrouve le client existant ou on le crée à la volée.
+        client = _get_or_create_client(client_name)
+        product = db.session.get(Product, product_id)
+        if not product:
+            flash("Produit introuvable.", "danger")
+            return redirect(url_for("commandes"))
+
+        disponible = _stock_disponible(product)
+        if quantity > disponible:
+            flash(
+                f"Stock disponible insuffisant pour {product.name} "
+                f"(disponible après commandes en attente : {disponible:g} {product.unit}).",
+                "danger",
+            )
+            return redirect(url_for("commandes"))
+
+        try:
+            order_date = datetime.strptime(cdate, "%Y-%m-%d").date()
+        except ValueError:
+            flash("Date invalide.", "danger")
+            return redirect(url_for("commandes"))
+
+        o = Order(
+            client_id=client.id,
+            product_id=product.id,
+            quantity=quantity,
+            unit_price=unit_price,
+            total=quantity * unit_price,
+            status="en_attente",
+            date=order_date,
+            note=note,
+            user_id=current_user.id,
+        )
+        db.session.add(o)
+        db.session.commit()
+        flash("Commande enregistrée.", "success")
+        return redirect(url_for("commandes"))
+
+    statut_filtre = request.args.get("statut", "en_attente")
+    q = Order.query
+    if statut_filtre in ("en_attente", "confirmee", "annulee"):
+        q = q.filter_by(status=statut_filtre)
+    liste = q.order_by(Order.date.desc(), Order.created_at.desc()).all()
+
+    produits = Product.query.order_by(Product.name).all()
+    disponibilites = {p.id: _stock_disponible(p) for p in produits}
+
+    return render_template(
+        "commandes.html",
+        liste=liste,
+        produits=produits,
+        disponibilites=disponibilites,
+        clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
+        statut_filtre=statut_filtre,
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/commandes/<int:oid>/confirmer", methods=["POST"])
+@login_required
+def confirmer_commande(oid):
+    o = db.session.get(Order, oid)
+    if not o or o.status != "en_attente":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("commandes"))
+
+    product = db.session.get(Product, o.product_id)
+    if not product:
+        flash("Produit introuvable.", "danger")
+        return redirect(url_for("commandes"))
+
+    if product.stock < o.quantity:
+        flash(
+            f"Stock physique insuffisant pour confirmer cette commande : {product.name} "
+            f"(disponible : {product.stock:g} {product.unit}).",
+            "danger",
+        )
+        return redirect(url_for("commandes"))
+
+    vente = Sale(
+        numero=_next_sale_numero(),
+        partner_id=o.client_id,
+        total=o.total,
+        date=date.today(),
+        user_id=current_user.id,
+    )
+    db.session.add(vente)
+    db.session.flush()  # récupérer vente.id avant de créer la ligne
+
+    tr = Transaction(
+        type="vente",
+        product_id=product.id,
+        partner_id=o.client_id,
+        sale_id=vente.id,
+        quantity=o.quantity,
+        unit_price=o.unit_price,
+        total=o.total,
+        date=date.today(),
+        note=(f"Commande #{o.id} confirmée" + (f" — {o.note}" if o.note else "")),
+        user_id=current_user.id,
+    )
+    product.stock -= o.quantity
+    db.session.add(tr)
+
+    o.status = "confirmee"
+    o.date_confirmation = date.today()
+    o.sale_id = vente.id
+
+    db.session.commit()
+    flash(f"Commande transformée en vente {vente.numero} ({o.total:.0f} FCFA). Stock mis à jour.", "success")
+    return redirect(url_for("commandes"))
+
+
+@app.route("/commandes/<int:oid>/annuler", methods=["POST"])
+@login_required
+def annuler_commande(oid):
+    o = db.session.get(Order, oid)
+    if not o or o.status != "en_attente":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("commandes"))
+    o.status = "annulee"
+    db.session.commit()
+    flash("Commande annulée. Le stock réservé est de nouveau disponible.", "info")
+    return redirect(url_for("commandes"))
+
+
+@app.route("/commandes/<int:oid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_commande(oid):
+    o = db.session.get(Order, oid)
+    if o:
+        if o.status == "confirmee":
+            flash("Impossible de supprimer une commande déjà confirmée (elle correspond à une vente réelle — supprimez plutôt la transaction ou la facture associée si besoin).", "danger")
+        else:
+            db.session.delete(o)
+            db.session.commit()
+            flash("Commande supprimée.", "info")
+    return redirect(url_for("commandes"))
 
 
 # ---------- Produits ----------
