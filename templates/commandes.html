@@ -103,6 +103,9 @@
               {% if o.status == 'confirmee' and o.sale_id %}
               <a href="{{ url_for('facture_detail', sid=o.sale_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" title="Voir la facture">🧾</a>
               {% endif %}
+              {% if current_user.is_admin and o.status == 'en_attente' %}
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Modifier" data-bs-toggle="modal" data-bs-target="#editOrder{{ o.id }}">✎</button>
+              {% endif %}
               {% if current_user.is_admin and o.status != 'confirmee' %}
               <form method="POST" action="{{ url_for('supprimer_commande', oid=o.id) }}" onsubmit="return confirm('Supprimer définitivement cette commande ?');">
                 <button class="btn btn-sm btn-outline-danger" title="Supprimer">🗑</button>
@@ -110,6 +113,56 @@
               {% endif %}
             </td>
           </tr>
+          {% if current_user.is_admin and o.status == 'en_attente' %}
+          <div class="modal fade" id="editOrder{{ o.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="POST" action="{{ url_for('modifier_commande', oid=o.id) }}">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Modifier la commande</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-2">
+                      <label class="form-label">Client</label>
+                      <input type="text" name="client_name" list="clients-datalist-cmd" class="form-control" value="{{ o.client.name if o.client else '' }}" autocomplete="off" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Produit</label>
+                      <select name="product_id" class="form-select" required>
+                        {% for p in produits %}
+                          <option value="{{ p.id }}" {% if p.id==o.product_id %}selected{% endif %}>{{ p.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="row">
+                      <div class="col-6 mb-2">
+                        <label class="form-label">Quantité</label>
+                        <input type="number" step="any" min="0.01" name="quantity" class="form-control" value="{{ o.quantity }}" required>
+                      </div>
+                      <div class="col-6 mb-2">
+                        <label class="form-label">Prix unitaire (FCFA)</label>
+                        <input type="number" step="any" min="0" name="unit_price" class="form-control" value="{{ o.unit_price }}" required>
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Date</label>
+                      <input type="date" name="date" class="form-control" value="{{ o.date.isoformat() }}" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Note (optionnel)</label>
+                      <input type="text" name="note" class="form-control" value="{{ o.note or '' }}">
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Enregistrer les modifications</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endif %}
         {% else %}
           <tr><td colspan="8" class="text-muted">Aucune commande.</td></tr>
         {% endfor %}

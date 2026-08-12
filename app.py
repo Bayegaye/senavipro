@@ -557,6 +557,91 @@ def supprimer_transaction(tid):
     return redirect(url_for("ventes" if type_ == "vente" else "achats"))
 
 
+@app.route("/transactions/<int:tid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_transaction(tid):
+    """Permet à l'administrateur de corriger une vente ou un achat déjà
+    enregistré (produit, quantité, prix, client/fournisseur, date, note) en
+    cas d'erreur de saisie. Le stock est réajusté : l'effet de l'ancienne
+    valeur est d'abord annulé, puis celui de la nouvelle est appliqué."""
+    tr = db.session.get(Transaction, tid)
+    if not tr:
+        abort(404)
+    type_ = tr.type
+
+    try:
+        product_id = int(request.form["product_id"])
+        quantity = float(request.form["quantity"])
+        unit_price = float(request.form["unit_price"])
+        partner_id = request.form.get("partner_id") or None
+        tdate = request.form.get("date") or tr.date.isoformat()
+        note = request.form.get("note", "").strip()
+    except (KeyError, ValueError):
+        flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+        return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+    if quantity <= 0 or unit_price < 0:
+        flash("Quantité ou prix invalide.", "danger")
+        return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+    new_product = db.session.get(Product, product_id)
+    if not new_product:
+        flash("Produit introuvable.", "danger")
+        return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+    try:
+        new_date = datetime.strptime(tdate, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Date invalide.", "danger")
+        return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+    # Annule l'effet de l'ancienne transaction sur le stock du produit d'origine.
+    old_product = db.session.get(Product, tr.product_id)
+    if old_product:
+        if type_ == "vente":
+            old_product.stock += tr.quantity
+        else:
+            old_product.stock -= tr.quantity
+
+    # Vérifie que le nouveau produit/quantité reste cohérent avant d'appliquer.
+    stock_apres_annulation = new_product.stock if new_product.id != (old_product.id if old_product else None) else old_product.stock
+    if type_ == "vente" and stock_apres_annulation < quantity:
+        db.session.rollback()
+        flash(
+            f"Stock insuffisant pour {new_product.name} "
+            f"(disponible : {stock_apres_annulation:g} {new_product.unit}).",
+            "danger",
+        )
+        return redirect(url_for("ventes"))
+
+    tr.product_id = new_product.id
+    tr.partner_id = int(partner_id) if partner_id else None
+    tr.quantity = quantity
+    tr.unit_price = unit_price
+    tr.total = quantity * unit_price
+    tr.date = new_date
+    tr.note = note
+
+    # Applique l'effet de la nouvelle transaction sur le stock du nouveau produit.
+    if type_ == "vente":
+        new_product.stock -= quantity
+    else:
+        new_product.stock += quantity
+
+    # Si la transaction fait partie d'une facture, on met à jour le total de
+    # la facture pour qu'il reste cohérent avec la ligne modifiée.
+    if tr.sale_id:
+        vente = db.session.get(Sale, tr.sale_id)
+        if vente:
+            vente.partner_id = tr.partner_id
+            vente.total = sum(l.total for l in vente.lignes)
+
+    db.session.commit()
+    flash(("Vente" if type_ == "vente" else "Achat") + " modifié(e) avec succès.", "success")
+    return redirect(url_for("ventes" if type_ == "vente" else "achats"))
+
+
 # ---------- Ventes multi-produits (facture unique par client) ----------
 
 def _next_sale_numero():
@@ -857,6 +942,76 @@ def annuler_commande(oid):
     return redirect(url_for("commandes"))
 
 
+@app.route("/commandes/<int:oid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_commande(oid):
+    """Permet à l'administrateur de corriger une commande en attente (client,
+    produit, quantité, prix, date, note) en cas d'erreur de saisie. Les
+    commandes déjà confirmées (devenues une vente réelle) ou annulées ne
+    peuvent plus être modifiées."""
+    o = db.session.get(Order, oid)
+    if not o:
+        abort(404)
+    if o.status != "en_attente":
+        flash("Seules les commandes en attente peuvent être modifiées.", "danger")
+        return redirect(url_for("commandes"))
+
+    try:
+        product_id = int(request.form["product_id"])
+        quantity = float(request.form["quantity"])
+        unit_price = float(request.form["unit_price"])
+        cdate = request.form.get("date") or o.date.isoformat()
+        note = request.form.get("note", "").strip()
+    except (KeyError, ValueError):
+        flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+        return redirect(url_for("commandes"))
+
+    if quantity <= 0 or unit_price < 0:
+        flash("Quantité ou prix invalide.", "danger")
+        return redirect(url_for("commandes"))
+
+    client_name = request.form.get("client_name", "").strip()
+    if not client_name:
+        flash("Le nom du client est obligatoire.", "danger")
+        return redirect(url_for("commandes"))
+    client = _get_or_create_client(client_name)
+
+    product = db.session.get(Product, product_id)
+    if not product:
+        flash("Produit introuvable.", "danger")
+        return redirect(url_for("commandes"))
+
+    # Le stock disponible doit exclure la réservation de cette commande
+    # elle-même, puisqu'on est en train de la modifier (pas d'en créer une
+    # nouvelle) — sinon sa propre quantité réservée serait comptée deux fois.
+    disponible = _stock_disponible(product, exclude_order_id=o.id)
+    if quantity > disponible:
+        flash(
+            f"Stock disponible insuffisant pour {product.name} "
+            f"(disponible après commandes en attente : {disponible:g} {product.unit}).",
+            "danger",
+        )
+        return redirect(url_for("commandes"))
+
+    try:
+        order_date = datetime.strptime(cdate, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Date invalide.", "danger")
+        return redirect(url_for("commandes"))
+
+    o.client_id = client.id
+    o.product_id = product.id
+    o.quantity = quantity
+    o.unit_price = unit_price
+    o.total = quantity * unit_price
+    o.date = order_date
+    o.note = note
+    db.session.commit()
+    flash("Commande modifiée avec succès.", "success")
+    return redirect(url_for("commandes"))
+
+
 @app.route("/commandes/<int:oid>/supprimer", methods=["POST"])
 @login_required
 @admin_required
@@ -1016,6 +1171,43 @@ def supprimer_depense(eid):
         db.session.delete(e)
         db.session.commit()
         flash("Dépense supprimée.", "info")
+    return redirect(url_for("depenses"))
+
+
+@app.route("/depenses/<int:eid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_depense(eid):
+    """Permet à l'administrateur de corriger une dépense déjà enregistrée
+    (catégorie, description, montant, date) en cas d'erreur de saisie."""
+    e = db.session.get(Expense, eid)
+    if not e:
+        abort(404)
+
+    category = request.form.get("category", "").strip()
+    description = request.form.get("description", "").strip()
+    edate = request.form.get("date") or e.date.isoformat()
+    try:
+        amount = float(request.form["amount"])
+    except (KeyError, ValueError):
+        flash("Montant invalide.", "danger")
+        return redirect(url_for("depenses"))
+
+    if not category or amount <= 0:
+        flash("Catégorie et montant (positif) sont obligatoires.", "danger")
+        return redirect(url_for("depenses"))
+
+    try:
+        e.date = datetime.strptime(edate, "%Y-%m-%d").date()
+    except ValueError:
+        flash("Date invalide.", "danger")
+        return redirect(url_for("depenses"))
+
+    e.category = category
+    e.description = description
+    e.amount = amount
+    db.session.commit()
+    flash("Dépense modifiée avec succès.", "success")
     return redirect(url_for("depenses"))
 
 

@@ -129,13 +129,69 @@
             {% endif %}
             <td class="text-muted small">{{ t.user.full_name if t.user else '' }}</td>
             {% if current_user.is_admin %}
-            <td>
+            <td class="d-flex gap-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Modifier" data-bs-toggle="modal" data-bs-target="#editModal{{ t.id }}">✎</button>
               <form method="POST" action="{{ url_for('supprimer_transaction', tid=t.id) }}" onsubmit="return confirm('Supprimer cette transaction ?');">
-                <button class="btn btn-sm btn-outline-danger">✕</button>
+                <button class="btn btn-sm btn-outline-danger" title="Supprimer">✕</button>
               </form>
             </td>
             {% endif %}
           </tr>
+          {% if current_user.is_admin %}
+          <div class="modal fade" id="editModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="POST" action="{{ url_for('modifier_transaction', tid=t.id) }}">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Modifier {{ 'la vente' if type_=='vente' else "l'achat" }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-2">
+                      <label class="form-label">Produit</label>
+                      <select name="product_id" class="form-select" required>
+                        {% for p in produits %}
+                          <option value="{{ p.id }}" {% if p.id==t.product_id %}selected{% endif %}>{{ p.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">{{ 'Client' if type_=='vente' else 'Fournisseur' }} (optionnel)</label>
+                      <select name="partner_id" class="form-select">
+                        <option value="">— Non spécifié —</option>
+                        {% for pa in partenaires %}
+                          <option value="{{ pa.id }}" {% if t.partner_id==pa.id %}selected{% endif %}>{{ pa.name }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                    <div class="row">
+                      <div class="col-6 mb-2">
+                        <label class="form-label">Quantité</label>
+                        <input type="number" step="any" min="0.01" name="quantity" class="form-control" value="{{ t.quantity }}" required>
+                      </div>
+                      <div class="col-6 mb-2">
+                        <label class="form-label">Prix unitaire (FCFA)</label>
+                        <input type="number" step="any" min="0" name="unit_price" class="form-control" value="{{ t.unit_price }}" required>
+                      </div>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Date</label>
+                      <input type="date" name="date" class="form-control" value="{{ t.date.isoformat() }}" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Note (optionnel)</label>
+                      <input type="text" name="note" class="form-control" value="{{ t.note or '' }}">
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Enregistrer les modifications</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endif %}
         {% else %}
           <tr><td colspan="{{ 7 + (1 if type_=='vente' else 0) + (1 if current_user.is_admin else 0) }}" class="text-muted">Aucune transaction.</td></tr>
         {% endfor %}
