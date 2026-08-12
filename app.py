@@ -101,6 +101,39 @@ def _ensure_schema_upgrades():
     _ensure_column(inspector, "orders", "sale_id", "INTEGER")
 
 
+def _generer_factures_manquantes():
+    """Génère rétroactivement une facture individuelle pour chaque vente
+    enregistrée avant l'ajout de la facturation automatique sur le
+    formulaire « Vente rapide » (ces ventes existent en base sans sale_id,
+    donc sans lien facture affiché). Idempotente et sûre à ré-exécuter à
+    chaque démarrage : ne traite que les ventes qui n'ont encore aucune
+    facture associée."""
+    ventes_sans_facture = (
+        Transaction.query.filter_by(type="vente", sale_id=None)
+        .order_by(Transaction.date, Transaction.created_at, Transaction.id)
+        .all()
+    )
+    if not ventes_sans_facture:
+        return
+    annee_courante = datetime.utcnow().year
+    prochain_numero = Sale.query.count() + 1
+    for tr in ventes_sans_facture:
+        annee = tr.date.year if tr.date else annee_courante
+        vente = Sale(
+            numero=f"FAC-{annee}-{prochain_numero:05d}",
+            partner_id=tr.partner_id,
+            total=tr.total,
+            date=tr.date,
+            user_id=tr.user_id,
+            created_at=tr.created_at,
+        )
+        db.session.add(vente)
+        db.session.flush()  # pour obtenir vente.id avant de l'associer
+        tr.sale_id = vente.id
+        prochain_numero += 1
+    db.session.commit()
+
+
 # Crée automatiquement les tables et données par défaut manquantes à chaque
 # démarrage (opération sûre, sans effet si elles existent déjà) — évite les
 # erreurs "no such table" et fait apparaître les nouveaux produits par
@@ -108,6 +141,7 @@ def _ensure_schema_upgrades():
 with app.app_context():
     db.create_all()
     _ensure_schema_upgrades()
+    _generer_factures_manquantes()
     from seed import ensure_seed_data
     ensure_seed_data(verbose=False)
 
