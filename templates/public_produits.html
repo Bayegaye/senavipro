@@ -65,12 +65,15 @@
         </div>
       </div>
       <div class="col-md-6 col-lg-3">
-        <div class="sp-card p-4 h-100 d-flex flex-column">
+        <div class="sp-card h-100 d-flex flex-column">
+          <img src="{{ url_for('static', filename='img/products/bissap.jpg') }}" alt="Bissap" class="sp-card-photo">
+          <div class="p-4 d-flex flex-column flex-grow-1">
           <h5 class="fw-bold">Bissap</h5>
           <p class="small text-muted flex-grow-1">Fleurs d'oseille de Guinée séchées, pour jus rafraîchissant et infusions.</p>
           <div class="d-flex justify-content-between align-items-center mt-2">
             <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Sur demande</span>
             <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur le bissap.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
           </div>
         </div>
       </div>
