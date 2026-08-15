@@ -837,12 +837,16 @@ def commandes():
 
         disponible = _stock_disponible(product)
         if quantity > disponible:
+            # On autorise l'enregistrement d'une commande même en rupture de
+            # stock disponible : elle reste "en attente" et se régularise
+            # dès qu'un nouvel achat reconstitue le stock, avant confirmation
+            # en vente (qui, elle, vérifie toujours le stock physique réel).
             flash(
-                f"Stock disponible insuffisant pour {product.name} "
-                f"(disponible après commandes en attente : {disponible:g} {product.unit}).",
-                "danger",
+                f"Commande enregistrée en rupture de stock pour {product.name} "
+                f"(disponible après commandes en attente : {disponible:g} {product.unit}). "
+                f"Elle pourra être confirmée dès qu'un nouvel achat reconstituera le stock.",
+                "warning",
             )
-            return redirect(url_for("commandes"))
 
         try:
             order_date = datetime.strptime(cdate, "%Y-%m-%d").date()
@@ -999,12 +1003,15 @@ def modifier_commande(oid):
     # nouvelle) — sinon sa propre quantité réservée serait comptée deux fois.
     disponible = _stock_disponible(product, exclude_order_id=o.id)
     if quantity > disponible:
+        # Comme à la création, la modification reste possible en rupture de
+        # stock disponible : la commande reste "en attente" et se régularise
+        # avec un nouvel achat, avant confirmation en vente.
         flash(
-            f"Stock disponible insuffisant pour {product.name} "
-            f"(disponible après commandes en attente : {disponible:g} {product.unit}).",
-            "danger",
+            f"Commande modifiée en rupture de stock pour {product.name} "
+            f"(disponible après commandes en attente : {disponible:g} {product.unit}). "
+            f"Elle pourra être confirmée dès qu'un nouvel achat reconstituera le stock.",
+            "warning",
         )
-        return redirect(url_for("commandes"))
 
     try:
         order_date = datetime.strptime(cdate, "%Y-%m-%d").date()
