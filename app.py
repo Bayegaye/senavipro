@@ -887,6 +887,7 @@ def commandes():
         clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
         statut_filtre=statut_filtre,
         today=date.today().isoformat(),
+        quantite_totale=sum(o.quantity for o in liste),
     )
 
 

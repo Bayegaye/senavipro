@@ -170,6 +170,15 @@
           <tr><td colspan="8" class="text-muted">Aucune commande.</td></tr>
         {% endfor %}
         </tbody>
+        {% if liste %}
+        <tfoot>
+          <tr class="table-light">
+            <td colspan="3" class="text-end fw-bold">Total quantités</td>
+            <td class="fw-bold">{{ '%.0f'|format(quantite_totale) }}</td>
+            <td colspan="4"></td>
+          </tr>
+        </tfoot>
+        {% endif %}
       </table>
       </div>
     </div>
