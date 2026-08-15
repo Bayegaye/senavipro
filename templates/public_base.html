@@ -74,7 +74,7 @@
     font-weight: 700; font-size: .8rem;
   }
   .sp-card {
-    background: #fff; border: none; border-radius: 1rem;
+    background: #fff; border: none; border-radius: 1rem; overflow: hidden;
     box-shadow: 0 4px 18px rgba(43,33,24,.07); height: 100%;
     transition: transform .15s ease, box-shadow .15s ease;
   }
@@ -83,6 +83,9 @@
     width: 3.2rem; height: 3.2rem; border-radius: 50%; display: inline-flex;
     align-items: center; justify-content: center; background: var(--sp-orange-soft);
     color: var(--sp-orange-dark); font-size: 1.5rem; flex: 0 0 auto;
+  }
+  .sp-card-photo {
+    width: 100%; height: 190px; object-fit: cover; display: block;
   }
 
   /* ---------- Footer ---------- */
