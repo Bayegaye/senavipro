@@ -17,13 +17,16 @@ from models import db, User, Partner, Product, Transaction, Expense, Sale, Order
 
 APP_NAME = "SENAVIPRO"
 
-# Coordonnées de l'entreprise affichées sur les factures.
+# Coordonnées de l'entreprise affichées sur les factures et sur le site public.
 COMPANY_INFO = {
     "rccm": "RCCM N° 2025M076",
     "ninea": "NINEA N° 009458987 212",
     "fra": "FRA N° 1839/2025/FRA",
     "address": "Sangalkam, Rufisque, Dakar",
     "phone": "221 78 207 87 87",
+    # Numéro au format international sans espaces ni "+", pour les liens
+    # tel:/wa.me du site public (ex: appels et WhatsApp en un clic).
+    "phone_intl": "221782078787",
 }
 
 
@@ -206,10 +209,38 @@ def logout():
     return redirect(url_for("login"))
 
 
+# ---------- Site public (vitrine) ----------
+#
+# Pages publiques présentant Senavi Pro (poulets de chair, œufs de table,
+# produits locaux) aux visiteurs, sans authentification. Le personnel connecté
+# qui arrive sur "/" est automatiquement redirigé vers son tableau de bord
+# interne, comme avant l'ajout de ce site public.
+
 @app.route("/")
-@login_required
 def index():
-    return redirect(url_for("dashboard"))
+    if current_user.is_authenticated:
+        return redirect(url_for("dashboard"))
+    return render_template("public_accueil.html")
+
+
+@app.route("/nos-produits")
+def produits_public():
+    return render_template("public_produits.html")
+
+
+@app.route("/a-propos")
+def apropos_public():
+    return render_template("public_apropos.html")
+
+
+@app.route("/contact")
+def contact_public():
+    return render_template("public_contact.html")
+
+
+# Alias explicite (utilisé par url_for('accueil_public') dans les templates
+# publics) pour ne pas dépendre du nom historique "index".
+app.add_url_rule("/", endpoint="accueil_public", view_func=index)
 
 
 def _stock_reserve(product_id, exclude_order_id=None):

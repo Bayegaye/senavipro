@@ -1,0 +1,97 @@
+{% extends "public_base.html" %}
+{% block title %}Nos produits{% endblock %}
+{% block content %}
+
+<section class="sp-section pb-3" style="background: var(--sp-orange-soft);">
+  <div class="container text-center">
+    <div class="sp-eyebrow mb-2">Catalogue</div>
+    <h1 class="fw-bold mb-2">Nos produits</h1>
+    <p class="mb-0" style="color:#5a4c3d;">Prix sur demande — appelez-nous ou écrivez sur WhatsApp pour les tarifs en cours et les quantités disponibles.</p>
+  </div>
+</section>
+
+<section class="sp-section pt-5">
+  <div class="container">
+
+    <div class="d-flex align-items-center gap-2 mb-4">
+      <div class="sp-icon-badge" style="font-size:1.6rem;">🐔</div>
+      <h3 class="fw-bold mb-0">Volaille</h3>
+    </div>
+    <div class="row g-4 mb-5">
+      <div class="col-md-6 col-lg-4">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Poulets de chair</h5>
+          <p class="small text-muted flex-grow-1">Poulets élevés localement à Sangalkam, disponibles vivants ou prêts à la vente, à l'unité ou en gros volume pour revendeurs et restaurateurs.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Prix sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur les poulets de chair.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-4">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Œufs de table</h5>
+          <p class="small text-muted flex-grow-1">Œufs frais, vendus au plateau ou au carton, pour particuliers, boutiques et professionnels.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Prix sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur les œufs de table.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 mb-4">
+      <div class="sp-icon-badge" style="font-size:1.6rem;">🌿</div>
+      <h3 class="fw-bold mb-0">Produits locaux</h3>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-6 col-lg-3">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Bouye</h5>
+          <p class="small text-muted flex-grow-1">Pulpe de baobab séchée, base naturelle pour jus et bouillies.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur le bouye.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Bissap</h5>
+          <p class="small text-muted flex-grow-1">Fleurs d'oseille de Guinée séchées, pour jus rafraîchissant et infusions.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur le bissap.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Gingembre</h5>
+          <p class="small text-muted flex-grow-1">Racines fraîches, vendues au kilo, pour jus et cuisine.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur le gingembre.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6 col-lg-3">
+        <div class="sp-card p-4 h-100 d-flex flex-column">
+          <h5 class="fw-bold">Niébé</h5>
+          <p class="small text-muted flex-grow-1">Haricots niébé secs de qualité, vendus au kilo ou au sac.</p>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge rounded-pill" style="background:var(--sp-orange-soft); color:var(--sp-orange-dark);">Sur demande</span>
+            <a href="https://wa.me/{{ company_info.phone_intl }}?text={{ 'Bonjour Senavi Pro, je souhaite des informations sur le niébé.' | urlencode }}" target="_blank" rel="noopener" class="btn btn-sm btn-sp-whatsapp"><i class="bi bi-whatsapp"></i></a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="text-center mt-5">
+      <p class="text-muted small mb-3">Vous êtes revendeur, restaurateur ou souhaitez une commande en gros ? Contactez-nous directement.</p>
+      <a href="{{ url_for('contact_public') }}" class="btn btn-sp-primary">Nous contacter</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

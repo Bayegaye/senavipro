@@ -1,0 +1,80 @@
+{% extends "public_base.html" %}
+{% block title %}À propos{% endblock %}
+{% block content %}
+
+<section class="sp-section pb-3" style="background: var(--sp-orange-soft);">
+  <div class="container text-center">
+    <div class="sp-eyebrow mb-2">À propos</div>
+    <h1 class="fw-bold mb-2">Senavi Pro — Ginaar gu sell</h1>
+    <p class="mb-0" style="color:#5a4c3d;">Élevage avicole et produits locaux, à Sangalkam</p>
+  </div>
+</section>
+
+<section class="sp-section">
+  <div class="container">
+    <div class="row g-5 align-items-center">
+      <div class="col-lg-5 text-center">
+        <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="Senavi Pro" class="img-fluid" style="max-width:300px;">
+      </div>
+      <div class="col-lg-7">
+        <h2 class="fw-bold mb-3">Notre mission</h2>
+        <p style="color:#5a4c3d;">
+          Senavi Pro est une entreprise sénégalaise basée à Sangalkam (Rufisque, Dakar), spécialisée
+          dans la production et la commercialisation de poulets de chair et d'œufs de table. Notre
+          objectif est simple : proposer à nos clients — particuliers, boutiques et professionnels —
+          des produits frais, sains et disponibles régulièrement.
+        </p>
+        <p style="color:#5a4c3d;">
+          En complément de notre activité avicole, nous valorisons également des produits locaux
+          sénégalais de qualité : bouye, bissap, gingembre et niébé, sélectionnés avec le même soin
+          que nos poulets et nos œufs.
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sp-section" style="background: var(--sp-orange-soft);">
+  <div class="container">
+    <div class="text-center mb-5">
+      <div class="sp-eyebrow mb-2">Nos engagements</div>
+      <h2 class="fw-bold">Ce qui nous guide</h2>
+    </div>
+    <div class="row g-4">
+      <div class="col-md-4">
+        <div class="sp-card p-4 text-center">
+          <div class="sp-icon-badge mx-auto mb-3"><i class="bi bi-house-heart"></i></div>
+          <h5 class="fw-bold">Élevage local</h5>
+          <p class="small text-muted mb-0">Une production ancrée à Sangalkam, au plus près de nos clients de Dakar et Rufisque.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="sp-card p-4 text-center">
+          <div class="sp-icon-badge mx-auto mb-3"><i class="bi bi-patch-check-fill"></i></div>
+          <h5 class="fw-bold">Qualité &amp; fraîcheur</h5>
+          <p class="small text-muted mb-0">Un suivi rigoureux de l'élevage et des produits, du poulailler jusqu'à votre table.</p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="sp-card p-4 text-center">
+          <div class="sp-icon-badge mx-auto mb-3"><i class="bi bi-people-fill"></i></div>
+          <h5 class="fw-bold">Proximité client</h5>
+          <p class="small text-muted mb-0">Une relation directe, par téléphone ou WhatsApp, pour répondre rapidement à vos besoins.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sp-section text-center" style="background: var(--sp-dark); color:#fff;">
+  <div class="container">
+    <h2 class="fw-bold mb-3">Parlons de votre commande</h2>
+    <p class="mb-4" style="color:#d8cdbc;">Notre équipe est disponible pour vous conseiller et organiser votre livraison.</p>
+    <div class="d-flex flex-wrap justify-content-center gap-3">
+      <a href="tel:+{{ company_info.phone_intl }}" class="btn btn-sp-primary"><i class="bi bi-telephone-fill me-2"></i>{{ company_info.phone }}</a>
+      <a href="https://wa.me/{{ company_info.phone_intl }}" target="_blank" rel="noopener" class="btn btn-sp-whatsapp"><i class="bi bi-whatsapp me-2"></i>WhatsApp</a>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
