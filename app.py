@@ -128,11 +128,32 @@ def _generer_factures_manquantes():
     if not ventes_sans_facture:
         return
     annee_courante = datetime.utcnow().year
-    prochain_numero = Sale.query.count() + 1
+
+    # Comme _next_sale_numero(), on se base sur le plus grand numéro déjà
+    # utilisé PAR ANNÉE (jamais sur un simple compteur global) : une
+    # facture supprimée entre-temps ne doit jamais faire réattribuer un
+    # numéro déjà pris, sous peine de "duplicate key" sur sales.numero.
+    prochain_numero_par_annee = {}
+
+    def _prochain_numero(annee):
+        if annee not in prochain_numero_par_annee:
+            prefix = f"FAC-{annee}-"
+            max_seq = 0
+            for (numero,) in db.session.query(Sale.numero).filter(Sale.numero.like(f"{prefix}%")).all():
+                try:
+                    seq = int(numero.rsplit("-", 1)[-1])
+                except (ValueError, AttributeError):
+                    continue
+                max_seq = max(max_seq, seq)
+            prochain_numero_par_annee[annee] = max_seq + 1
+        seq = prochain_numero_par_annee[annee]
+        prochain_numero_par_annee[annee] += 1
+        return seq
+
     for tr in ventes_sans_facture:
         annee = tr.date.year if tr.date else annee_courante
         vente = Sale(
-            numero=f"FAC-{annee}-{prochain_numero:05d}",
+            numero=f"FAC-{annee}-{_prochain_numero(annee):05d}",
             partner_id=tr.partner_id,
             total=tr.total,
             date=tr.date,
@@ -142,7 +163,6 @@ def _generer_factures_manquantes():
         db.session.add(vente)
         db.session.flush()  # pour obtenir vente.id avant de l'associer
         tr.sale_id = vente.id
-        prochain_numero += 1
     db.session.commit()
 
 
@@ -688,9 +708,28 @@ def modifier_transaction(tid):
 # ---------- Ventes multi-produits (facture unique par client) ----------
 
 def _next_sale_numero():
+    """Génère le prochain numéro de facture "FAC-<année>-<séquence>".
+
+    Important : on se base sur le plus grand numéro déjà utilisé cette
+    année (et non sur un simple COUNT(*) des ventes), car une facture
+    supprimée (voir supprimer_facture / suppression du dernier produit
+    d'une transaction) réduit le nombre total de ventes sans libérer son
+    numéro — un COUNT(*) + 1 finit alors par recalculer un numéro déjà
+    attribué à une facture existante, ce qui provoque une erreur
+    "duplicate key" (contrainte d'unicité sur sales.numero) au moment de
+    l'INSERT, typiquement en confirmant une commande ou en enregistrant
+    une vente."""
     annee = datetime.utcnow().year
-    total = Sale.query.count()
-    return f"FAC-{annee}-{total + 1:05d}"
+    prefix = f"FAC-{annee}-"
+    max_seq = 0
+    existants = db.session.query(Sale.numero).filter(Sale.numero.like(f"{prefix}%")).all()
+    for (numero,) in existants:
+        try:
+            seq = int(numero.rsplit("-", 1)[-1])
+        except (ValueError, AttributeError):
+            continue
+        max_seq = max(max_seq, seq)
+    return f"{prefix}{max_seq + 1:05d}"
 
 
 @app.route("/ventes/nouvelle", methods=["GET", "POST"])
