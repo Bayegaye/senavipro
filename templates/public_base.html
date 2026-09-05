@@ -122,6 +122,11 @@
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='apropos_public' %}active{% endif %}" href="{{ url_for('apropos_public') }}">À propos</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='contact_public' %}active{% endif %}" href="{{ url_for('contact_public') }}">Contact</a></li>
         <li class="nav-item ms-lg-2"><a class="nav-link sp-nav-cta" href="tel:+{{ company_info.phone_intl }}"><i class="bi bi-telephone-fill me-1"></i>{{ company_info.phone }}</a></li>
+        <li class="nav-item ms-lg-1">
+          <a class="nav-link" href="{{ url_for('login') }}" title="Espace équipe (connexion)" aria-label="Espace équipe (connexion)">
+            <i class="bi bi-box-arrow-in-right"></i>
+          </a>
+        </li>
       </ul>
     </div>
   </div>
@@ -169,6 +174,7 @@
           <li><a href="{{ url_for('produits_public') }}">Nos produits</a></li>
           <li><a href="{{ url_for('apropos_public') }}">À propos</a></li>
           <li><a href="{{ url_for('contact_public') }}">Contact</a></li>
+          <li><a href="{{ url_for('login') }}"><i class="bi bi-box-arrow-in-right me-1"></i>Espace équipe</a></li>
         </ul>
       </div>
       <div class="col-md-4">
