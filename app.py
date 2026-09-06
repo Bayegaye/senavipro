@@ -347,6 +347,50 @@ def _valeur_pertes(start=None, end=None):
     return total
 
 
+def _benefice_par_produit(start=None, end=None):
+    """Bénéfice réel par produit sur la période : chiffre d'affaires réellement
+    encaissé sur les ventes de ce produit (prix de vente réel appliqué),
+    moins le coût d'achat réel (prix d'achat défini sur la fiche produit) des
+    quantités vendues de ce même produit. C'est bien la différence entre prix
+    de vente et prix d'achat, appliquée aux ventes réelles de la période — et
+    non une simple estimation théorique par unité, ce qui permet de refléter
+    d'éventuelles remises ou négociations sur le prix de vente.
+
+    Le bénéfice total tous produits confondus de la période s'obtient en
+    faisant la somme de ces bénéfices par produit, puis en déduisant de ce
+    total toutes les autres dépenses de la période qui ne sont pas le coût
+    d'achat des produits (dépenses générales + valeur des pertes) — ce coût
+    d'achat étant déjà déduit ci-dessus, produit par produit. Voir rapports()
+    pour ce calcul du bénéfice total."""
+    q = db.session.query(
+        Transaction.product_id,
+        func.coalesce(func.sum(Transaction.quantity), 0.0),
+        func.coalesce(func.sum(Transaction.total), 0.0),
+    ).filter(Transaction.type == "vente")
+    if start:
+        q = q.filter(Transaction.date >= start)
+    if end:
+        q = q.filter(Transaction.date <= end)
+
+    resultats = []
+    for product_id, qte_vendue, chiffre_affaires in q.group_by(Transaction.product_id).all():
+        product = db.session.get(Product, product_id)
+        if not product:
+            continue
+        qte_vendue = qte_vendue or 0.0
+        chiffre_affaires = chiffre_affaires or 0.0
+        cout_achat = qte_vendue * _prix_achat_reel(product_id)
+        resultats.append({
+            "product": product,
+            "quantite_vendue": qte_vendue,
+            "chiffre_affaires": chiffre_affaires,
+            "cout_achat": cout_achat,
+            "benefice": chiffre_affaires - cout_achat,
+        })
+    resultats.sort(key=lambda r: r["benefice"], reverse=True)
+    return resultats
+
+
 @app.route("/dashboard")
 @login_required
 def dashboard():
@@ -1621,16 +1665,18 @@ def rapports():
         .all()
     )
 
-    # Bénéfice réel de la période, calculé exactement comme sur le tableau de
-    # bord : marge sur les produits vendus (prix de vente − coût d'achat réel
-    # de la fiche produit) moins les dépenses générales et la valeur d'achat
-    # des pertes (produits cassés/périmés) sur la période — et non plus
-    # ventes − achats − dépenses, qui ne reflète pas la rentabilité réelle si
-    # les achats et les ventes de la période ne portent pas sur les mêmes
-    # produits/quantités.
-    cout_vendus_total = _cout_produits_vendus(date_debut_d, date_fin_d)
+    # Bénéfice réel par produit sur la période : pour chaque produit, la
+    # différence entre son chiffre d'affaires réel et son coût d'achat réel
+    # (prix d'achat de la fiche produit × quantité vendue).
+    benefice_par_produit = _benefice_par_produit(date_debut_d, date_fin_d)
     pertes_total = _valeur_pertes(date_debut_d, date_fin_d)
-    marge_totale = ventes_total - cout_vendus_total
+
+    # Bénéfice total tous produits confondus de la période = somme des
+    # bénéfices réels par produit ci-dessus, moins toutes les autres dépenses
+    # de la période qui ne sont pas le coût d'achat des produits (déjà déduit
+    # produit par produit) : dépenses générales (loyer, salaires, transport,
+    # etc.) et valeur d'achat des produits cassés/périmés/perdus.
+    marge_totale = sum(r["benefice"] for r in benefice_par_produit)
     benefice = marge_totale - depenses_total - pertes_total
 
     return render_template(
@@ -1642,6 +1688,7 @@ def rapports():
         depenses_total=depenses_total,
         pertes_total=pertes_total,
         benefice=benefice,
+        benefice_par_produit=benefice_par_produit,
         par_produit=par_produit,
         par_categorie_depense=par_categorie_depense,
         labels=labels,
