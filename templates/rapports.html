@@ -53,6 +53,43 @@
   </div>
 </div>
 
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card card-stat p-3">
+      <h5>Bénéfice réel par produit</h5>
+      <p class="text-muted small mb-2">Chiffre d'affaires du produit sur la période, moins son coût d'achat réel (prix d'achat de la fiche produit × quantité vendue).</p>
+      <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Produit</th><th>Qté vendue</th><th>Chiffre d'affaires</th><th>Coût d'achat</th><th>Bénéfice réel</th></tr></thead>
+        <tbody>
+        {% for r in benefice_par_produit %}
+          <tr>
+            <td>{{ r.product.name }}</td>
+            <td>{{ '%.0f'|format(r.quantite_vendue) }}</td>
+            <td>{{ '%.0f'|format(r.chiffre_affaires) }} FCFA</td>
+            <td>{{ '%.0f'|format(r.cout_achat) }} FCFA</td>
+            <td class="fw-semibold {% if r.benefice >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(r.benefice) }} FCFA</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-muted">Aucune vente sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if benefice_par_produit %}
+        <tfoot>
+          <tr class="fw-bold">
+            <td colspan="4" class="text-end">Total bénéfice sur produits vendus</td>
+            <td class="{% if benefice_par_produit|sum(attribute='benefice') >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ '%.0f'|format(benefice_par_produit|sum(attribute='benefice')) }} FCFA
+            </td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="row g-3">
   <div class="col-lg-7">
     <div class="card card-stat p-3">
