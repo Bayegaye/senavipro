@@ -301,21 +301,50 @@ def _get_or_create_client(name):
 # ---------- Tableau de bord ----------
 
 def _prix_achat_reel(product_id):
-    """Prix d'achat réel d'un produit, tel que défini sur sa fiche produit
-    (champ « prix d'achat par défaut » de la page Produits). Ce prix reflète
-    ce que l'entreprise paie réellement à ses fournisseurs et sert de
-    référence unique pour calculer le coût des produits vendus, plutôt qu'une
-    moyenne calculée sur l'historique des achats."""
+    """Prix d'achat par défaut d'un produit, tel que défini sur sa fiche
+    produit (champ « prix d'achat par défaut » de la page Produits). Utilisé
+    uniquement comme repli quand aucun achat n'a encore été enregistré pour ce
+    produit (ex. stock initial saisi sans transaction d'achat) — dans tous les
+    autres cas, _prix_achat_moyen_pondere() ci-dessous est la référence à
+    utiliser, car un même produit est souvent acheté à des prix différents
+    selon les fournisseurs ou les périodes."""
     product = db.session.get(Product, product_id)
     return product.prix_achat_defaut if product else 0.0
 
 
+def _prix_achat_moyen_pondere(product_id):
+    """Prix d'achat moyen pondéré (CMUP) d'un produit : moyenne de tous les
+    prix d'achat réellement payés pour ce produit (transactions de type
+    « achat », tout l'historique confondu), pondérée par la quantité de
+    chaque achat — c.-à-d. somme des montants achetés ÷ somme des quantités
+    achetées. Un même produit étant souvent acheté à des prix différents
+    (fournisseurs, saisons, négociations...), cette moyenne pondérée reflète
+    le coût réel bien mieux qu'un prix d'achat unique figé sur la fiche
+    produit. On ne restreint pas ce calcul à la période du rapport : les
+    produits vendus pendant la période ont pu être achetés avant elle, donc on
+    utilise l'historique complet des achats pour estimer leur coût.
+    Si aucun achat n'a jamais été enregistré pour ce produit, on retombe sur
+    le prix d'achat par défaut de la fiche produit.
+
+    Recalculé à chaque appel (pas de cache) : le prix moyen doit évoluer dès
+    qu'un nouvel achat est enregistré, y compris au sein d'une même requête."""
+    qte_totale, montant_total = db.session.query(
+        func.coalesce(func.sum(Transaction.quantity), 0.0),
+        func.coalesce(func.sum(Transaction.total), 0.0),
+    ).filter(
+        Transaction.type == "achat", Transaction.product_id == product_id
+    ).first()
+    if qte_totale:
+        return montant_total / qte_totale
+    return _prix_achat_reel(product_id)
+
+
 def _cout_produits_vendus(start=None, end=None):
-    """Coût d'achat (au prix d'achat réel défini sur chaque fiche produit) des
-    produits vendus sur la période — utilisé pour calculer la marge réelle des
-    ventes, plutôt que de comparer les ventes du jour aux achats du jour (qui
-    n'ont souvent aucun lien direct : un produit vendu aujourd'hui peut avoir
-    été acheté un autre jour)."""
+    """Coût d'achat (au prix d'achat moyen pondéré de chaque produit — voir
+    _prix_achat_moyen_pondere) des produits vendus sur la période — utilisé
+    pour calculer la marge réelle des ventes, plutôt que de comparer les
+    ventes du jour aux achats du jour (qui n'ont souvent aucun lien direct :
+    un produit vendu aujourd'hui peut avoir été acheté un autre jour)."""
     q = db.session.query(
         Transaction.product_id, func.coalesce(func.sum(Transaction.quantity), 0.0)
     ).filter(Transaction.type == "vente")
@@ -325,15 +354,16 @@ def _cout_produits_vendus(start=None, end=None):
         q = q.filter(Transaction.date <= end)
     total_cout = 0.0
     for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
-        total_cout += (qte_vendue or 0.0) * _prix_achat_reel(product_id)
+        total_cout += (qte_vendue or 0.0) * _prix_achat_moyen_pondere(product_id)
     return total_cout
 
 
 def _valeur_pertes(start=None, end=None):
-    """Valeur d'achat (au prix d'achat réel de la fiche produit) des produits
-    cassés/périmés/perdus sur la période — cette valeur est une perte sèche
-    pour l'entreprise (le produit est sorti du stock sans générer de revenu)
-    et doit donc être soustraite du bénéfice réel."""
+    """Valeur d'achat (au prix d'achat moyen pondéré du produit — voir
+    _prix_achat_moyen_pondere) des produits cassés/périmés/perdus sur la
+    période — cette valeur est une perte sèche pour l'entreprise (le produit
+    est sorti du stock sans générer de revenu) et doit donc être soustraite du
+    bénéfice réel."""
     q = db.session.query(
         Loss.product_id, func.coalesce(func.sum(Loss.quantity), 0.0)
     )
@@ -343,18 +373,24 @@ def _valeur_pertes(start=None, end=None):
         q = q.filter(Loss.date <= end)
     total = 0.0
     for product_id, qte_perdue in q.group_by(Loss.product_id).all():
-        total += (qte_perdue or 0.0) * _prix_achat_reel(product_id)
+        total += (qte_perdue or 0.0) * _prix_achat_moyen_pondere(product_id)
     return total
 
 
 def _benefice_par_produit(start=None, end=None):
     """Bénéfice réel par produit sur la période : chiffre d'affaires réellement
-    encaissé sur les ventes de ce produit (prix de vente réel appliqué),
-    moins le coût d'achat réel (prix d'achat défini sur la fiche produit) des
-    quantités vendues de ce même produit. C'est bien la différence entre prix
-    de vente et prix d'achat, appliquée aux ventes réelles de la période — et
-    non une simple estimation théorique par unité, ce qui permet de refléter
-    d'éventuelles remises ou négociations sur le prix de vente.
+    encaissé sur les ventes de ce produit sur la période (donc déjà basé sur le
+    prix de vente moyen pondéré réellement appliqué, puisqu'on additionne les
+    montants réels de chaque vente, à des prix parfois différents), moins le
+    coût d'achat de ce même produit au prix d'achat moyen pondéré (voir
+    _prix_achat_moyen_pondere) appliqué aux quantités vendues sur la période.
+
+    Un même produit étant souvent vendu et acheté à des prix différents selon
+    les jours/clients/fournisseurs, on utilise systématiquement des moyennes
+    pondérées par la quantité plutôt qu'un prix unique théorique : côté vente,
+    la moyenne pondérée découle naturellement de la somme des montants réels
+    (chiffre_affaires ÷ quantite_vendue) ; côté achat, elle est calculée
+    explicitement sur l'historique des achats.
 
     Le bénéfice total tous produits confondus de la période s'obtient en
     faisant la somme de ces bénéfices par produit, puis en déduisant de ce
@@ -379,10 +415,14 @@ def _benefice_par_produit(start=None, end=None):
             continue
         qte_vendue = qte_vendue or 0.0
         chiffre_affaires = chiffre_affaires or 0.0
-        cout_achat = qte_vendue * _prix_achat_reel(product_id)
+        prix_vente_moyen = (chiffre_affaires / qte_vendue) if qte_vendue else 0.0
+        prix_achat_moyen = _prix_achat_moyen_pondere(product_id)
+        cout_achat = qte_vendue * prix_achat_moyen
         resultats.append({
             "product": product,
             "quantite_vendue": qte_vendue,
+            "prix_vente_moyen": prix_vente_moyen,
+            "prix_achat_moyen": prix_achat_moyen,
             "chiffre_affaires": chiffre_affaires,
             "cout_achat": cout_achat,
             "benefice": chiffre_affaires - cout_achat,
