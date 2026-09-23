@@ -1,0 +1,17 @@
+{
+  "name": "Senavi Pro — Commande en ligne",
+  "short_name": "Senavi Pro",
+  "description": "Commandez vos œufs, poulets et produits locaux Senavi Pro, avec livraison à Sangalkam, Rufisque et Dakar.",
+  "start_url": "/commander",
+  "id": "/commander",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFBF6",
+  "theme_color": "#E8590C",
+  "orientation": "portrait",
+  "lang": "fr",
+  "icons": [
+    { "src": "/static/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

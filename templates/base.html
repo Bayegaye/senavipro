@@ -37,6 +37,7 @@
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='ventes' %}active{% endif %}" href="{{ url_for('ventes') }}">Ventes</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint in ['factures','facture_detail'] %}active{% endif %}" href="{{ url_for('factures') }}">Factures</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='commandes' %}active{% endif %}" href="{{ url_for('commandes') }}">Commandes</a></li>
+        <li class="nav-item"><a class="nav-link {% if request.endpoint=='livraisons' %}active{% endif %}" href="{{ url_for('livraisons') }}">Livraisons</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='achats' %}active{% endif %}" href="{{ url_for('achats') }}">Achats</a></li>
         <li class="nav-item"><a class="nav-link {% if request.endpoint=='stock' %}active{% endif %}" href="{{ url_for('stock') }}">Stock</a></li>
         {% if current_user.is_admin %}

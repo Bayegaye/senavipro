@@ -132,7 +132,13 @@ class Order(db.Model):
     """Commande d'un client : réserve une quantité de stock avant d'être
     transformée en vente (à la confirmation) ou annulée (la réservation est
     alors libérée sans impact sur le stock, qui n'est modifié qu'à la
-    confirmation)."""
+    confirmation).
+
+    Une ligne peut soit être saisie directement par un membre de l'équipe
+    (order_group_id vide, cas historique — page Commandes), soit provenir
+    d'un panier passé par un client sur le site public (order_group_id
+    renseigné, plusieurs lignes rattachées à un même OrderGroup — voir
+    ci-dessous)."""
     __tablename__ = "orders"
     id = db.Column(db.Integer, primary_key=True)
     client_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=False)
@@ -146,9 +152,56 @@ class Order(db.Model):
     note = db.Column(db.String(256))
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True)
+    order_group_id = db.Column(db.Integer, db.ForeignKey("order_groups.id"), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     client = db.relationship("Partner")
     product = db.relationship("Product")
     user = db.relationship("User")
     sale = db.relationship("Sale")
+
+
+class DeliveryTier(db.Model):
+    """Palier de prix de livraison en fonction de la quantité totale commandée
+    (tous produits confondus) sur le panier du site public — modifiable par
+    l'administrateur (page Livraison > Tarifs)."""
+    __tablename__ = "delivery_tiers"
+    id = db.Column(db.Integer, primary_key=True)
+    quantite_min = db.Column(db.Float, nullable=False)
+    quantite_max = db.Column(db.Float, nullable=True)  # vide = pas de plafond
+    prix = db.Column(db.Float, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class OrderGroup(db.Model):
+    """Un panier passé par un client depuis le site public (page /commander) :
+    regroupe une ou plusieurs lignes Order (une par produit du panier) ainsi
+    que les informations de livraison (contact, adresse, frais de livraison
+    calculé selon la quantité totale). Distincte de Sale (qui représente une
+    facture déjà validée) : un OrderGroup ne devient une Sale qu'à la
+    confirmation par un membre de l'équipe (page Livraisons), qui vérifie le
+    stock réel avant de débiter quoi que ce soit — jusque-là, comme pour Order,
+    aucun stock n'est modifié."""
+    __tablename__ = "order_groups"
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.String(30), unique=True, nullable=False)
+    client_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=False)
+    client_phone = db.Column(db.String(32))
+    client_address = db.Column(db.String(256))
+    delivery_fee = db.Column(db.Float, nullable=False, default=0)
+    total_produits = db.Column(db.Float, nullable=False, default=0)
+    total = db.Column(db.Float, nullable=False, default=0)
+    # nouvelle | confirmee | en_livraison | livree | annulee
+    status = db.Column(db.String(20), nullable=False, default="nouvelle")
+    note = db.Column(db.String(256))
+    sale_id = db.Column(db.Integer, db.ForeignKey("sales.id"), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    confirmed_at = db.Column(db.DateTime, nullable=True)
+    delivered_at = db.Column(db.DateTime, nullable=True)
+
+    client = db.relationship("Partner")
+    sale = db.relationship("Sale")
+    lignes = db.relationship(
+        "Order", backref="order_group", lazy="dynamic", order_by="Order.id",
+        foreign_keys="Order.order_group_id",
+    )

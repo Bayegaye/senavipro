@@ -13,7 +13,7 @@ from flask_login import (
 )
 from sqlalchemy import func, inspect, text
 
-from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss
+from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss, OrderGroup, DeliveryTier
 
 APP_NAME = "SENAVIPRO"
 
@@ -107,10 +107,15 @@ def _ensure_schema_upgrades():
     - ajoute la colonne sale_id à la table orders si elle n'existe pas encore
       (nécessaire pour relier une commande confirmée à la facture générée —
       une table orders a pu être créée par un déploiement antérieur à
-      l'ajout de cette colonne au modèle Order)."""
+      l'ajout de cette colonne au modèle Order) ;
+    - ajoute la colonne order_group_id à la table orders si elle n'existe pas
+      encore (relie une ligne de commande à son panier d'origine côté site
+      public — voir OrderGroup — sans effet sur les commandes internes
+      existantes, saisies sans panier et dont cette colonne reste vide)."""
     inspector = inspect(db.engine)
     _ensure_column(inspector, "transactions", "sale_id", "INTEGER")
     _ensure_column(inspector, "orders", "sale_id", "INTEGER")
+    _ensure_column(inspector, "orders", "order_group_id", "INTEGER")
 
 
 def _generer_factures_manquantes():
@@ -128,11 +133,32 @@ def _generer_factures_manquantes():
     if not ventes_sans_facture:
         return
     annee_courante = datetime.utcnow().year
-    prochain_numero = Sale.query.count() + 1
+
+    # Comme _next_sale_numero(), on se base sur le plus grand numéro déjà
+    # utilisé PAR ANNÉE (jamais sur un simple compteur global) : une
+    # facture supprimée entre-temps ne doit jamais faire réattribuer un
+    # numéro déjà pris, sous peine de "duplicate key" sur sales.numero.
+    prochain_numero_par_annee = {}
+
+    def _prochain_numero(annee):
+        if annee not in prochain_numero_par_annee:
+            prefix = f"FAC-{annee}-"
+            max_seq = 0
+            for (numero,) in db.session.query(Sale.numero).filter(Sale.numero.like(f"{prefix}%")).all():
+                try:
+                    seq = int(numero.rsplit("-", 1)[-1])
+                except (ValueError, AttributeError):
+                    continue
+                max_seq = max(max_seq, seq)
+            prochain_numero_par_annee[annee] = max_seq + 1
+        seq = prochain_numero_par_annee[annee]
+        prochain_numero_par_annee[annee] += 1
+        return seq
+
     for tr in ventes_sans_facture:
         annee = tr.date.year if tr.date else annee_courante
         vente = Sale(
-            numero=f"FAC-{annee}-{prochain_numero:05d}",
+            numero=f"FAC-{annee}-{_prochain_numero(annee):05d}",
             partner_id=tr.partner_id,
             total=tr.total,
             date=tr.date,
@@ -142,7 +168,6 @@ def _generer_factures_manquantes():
         db.session.add(vente)
         db.session.flush()  # pour obtenir vente.id avant de l'associer
         tr.sale_id = vente.id
-        prochain_numero += 1
     db.session.commit()
 
 
@@ -238,6 +263,195 @@ def contact_public():
     return render_template("public_contact.html")
 
 
+def _paliers_livraison():
+    return DeliveryTier.query.order_by(DeliveryTier.quantite_min).all()
+
+
+def _tarif_livraison(quantite_totale):
+    """Frais de livraison correspondant à une quantité totale de panier
+    (tous produits confondus), selon les paliers définis par l'administrateur
+    (page Livraison > Tarifs). Renvoie 0 si aucun palier ne correspond (ex.
+    panier vide) ou si aucun palier n'est configuré."""
+    if quantite_totale <= 0:
+        return 0.0
+    tier = (
+        DeliveryTier.query.filter(DeliveryTier.quantite_min <= quantite_totale)
+        .filter(db.or_(DeliveryTier.quantite_max.is_(None), DeliveryTier.quantite_max >= quantite_totale))
+        .order_by(DeliveryTier.quantite_min.desc())
+        .first()
+    )
+    if tier:
+        return tier.prix
+    # Quantité au-delà de tous les paliers définis (ex. administrateur n'a
+    # configuré que jusqu'à 30 et le client en commande 50) : on applique le
+    # tarif du palier le plus élevé plutôt que de ne rien facturer.
+    dernier = DeliveryTier.query.order_by(DeliveryTier.quantite_min.desc()).first()
+    return dernier.prix if dernier else 0.0
+
+
+def _next_order_group_numero():
+    """Numéro de commande en ligne "CMD-<année>-<séquence>", même logique que
+    _next_sale_numero() (séquence par année, basée sur le plus grand numéro
+    déjà utilisé plutôt qu'un COUNT(*), pour éviter tout conflit après une
+    suppression)."""
+    annee = datetime.utcnow().year
+    prefix = f"CMD-{annee}-"
+    max_seq = 0
+    existants = db.session.query(OrderGroup.numero).filter(OrderGroup.numero.like(f"{prefix}%")).all()
+    for (numero,) in existants:
+        try:
+            seq = int(numero.rsplit("-", 1)[-1])
+        except (ValueError, AttributeError):
+            continue
+        max_seq = max(max_seq, seq)
+    return f"{prefix}{max_seq + 1:05d}"
+
+
+def _get_or_create_client_by_phone(name, phone):
+    """Retrouve un client existant par téléphone (prioritaire, car un même
+    client peut donner des variantes de son nom d'une commande à l'autre) ou,
+    à défaut, par nom (voir _get_or_create_client) ; sinon en crée un nouveau.
+    Utilisé pour les commandes passées depuis le site public, où le client
+    n'est pas sélectionné dans un répertoire mais saisit ses coordonnées
+    lui-même. Ne fait pas de commit : à intégrer dans la transaction en
+    cours."""
+    phone = (phone or "").strip()
+    name = (name or "").strip() or "Client site public"
+    if phone:
+        client = Partner.query.filter(Partner.type == "client", Partner.phone == phone).first()
+        if client:
+            return client
+    client = _get_or_create_client(name)
+    if client and phone and not client.phone:
+        client.phone = phone
+    return client
+
+
+def _system_user_id():
+    """Identifiant du compte technique 'boutique-en-ligne' (voir seed.py),
+    utilisé comme auteur des commandes passées par des clients depuis le site
+    public — celles-ci ne sont l'action d'aucun membre de l'équipe, mais
+    Order.user_id / Transaction.user_id sont obligatoires."""
+    user = User.query.filter_by(username="boutique-en-ligne").first()
+    return user.id if user else current_user_or_admin_id()
+
+
+def current_user_or_admin_id():
+    """Repli si le compte technique n'a pas encore été créé (ne devrait pas
+    arriver, ensure_seed_data() le crée au démarrage) : utilise le premier
+    compte administrateur trouvé plutôt que de faire échouer la commande."""
+    admin = User.query.filter_by(role="admin").order_by(User.id).first()
+    return admin.id if admin else None
+
+
+@app.route("/commander", methods=["GET", "POST"])
+def commander():
+    """Page publique de commande en ligne : le client voit les produits
+    disponibles avec leur prix de vente, compose son panier (plusieurs
+    produits et quantités), et le prix de livraison se recalcule selon la
+    quantité totale commandée. La commande apparaît ensuite sur la page
+    Livraisons de la plateforme interne pour que l'équipe organise la
+    livraison — comme pour les commandes internes (page Commandes), aucun
+    stock n'est débité tant que la commande n'est pas confirmée."""
+    produits = (
+        Product.query.filter(Product.prix_vente_defaut > 0)
+        .order_by(Product.name)
+        .all()
+    )
+
+    if request.method == "POST":
+        client_name = request.form.get("client_name", "").strip()
+        client_phone = request.form.get("client_phone", "").strip()
+        client_address = request.form.get("client_address", "").strip()
+        note = request.form.get("note", "").strip()
+        product_ids = request.form.getlist("product_id[]")
+        quantities = request.form.getlist("quantity[]")
+
+        if not client_phone:
+            flash("Merci d'indiquer un numéro de téléphone pour être contacté(e).", "danger")
+            return redirect(url_for("commander"))
+        if not client_address:
+            flash("Merci d'indiquer une adresse de livraison.", "danger")
+            return redirect(url_for("commander"))
+
+        produits_par_id = {p.id: p for p in produits}
+        lignes = []
+        for pid_raw, qty_raw in zip(product_ids, quantities):
+            if not pid_raw or not qty_raw:
+                continue
+            try:
+                pid = int(pid_raw)
+                qty = float(qty_raw)
+            except ValueError:
+                continue
+            if qty <= 0 or pid not in produits_par_id:
+                continue
+            lignes.append({"product": produits_par_id[pid], "quantity": qty})
+
+        if not lignes:
+            flash("Votre panier est vide — choisissez au moins un produit.", "danger")
+            return redirect(url_for("commander"))
+
+        quantite_totale = sum(l["quantity"] for l in lignes)
+        total_produits = sum(l["quantity"] * l["product"].prix_vente_defaut for l in lignes)
+        frais_livraison = _tarif_livraison(quantite_totale)
+
+        client = _get_or_create_client_by_phone(client_name, client_phone)
+        system_uid = _system_user_id()
+        if not client or not system_uid:
+            flash("Impossible d'enregistrer la commande pour le moment. Merci de nous contacter directement.", "danger")
+            return redirect(url_for("commander"))
+
+        og = OrderGroup(
+            numero=_next_order_group_numero(),
+            client_id=client.id,
+            client_phone=client_phone,
+            client_address=client_address,
+            delivery_fee=frais_livraison,
+            total_produits=total_produits,
+            total=total_produits + frais_livraison,
+            status="nouvelle",
+            note=note,
+        )
+        db.session.add(og)
+        db.session.flush()  # obtenir og.id avant de créer les lignes
+
+        for ligne in lignes:
+            product = ligne["product"]
+            db.session.add(Order(
+                client_id=client.id,
+                product_id=product.id,
+                quantity=ligne["quantity"],
+                unit_price=product.prix_vente_defaut,
+                total=ligne["quantity"] * product.prix_vente_defaut,
+                status="en_attente",
+                date=date.today(),
+                note=f"Commande en ligne {og.numero}",
+                user_id=system_uid,
+                order_group_id=og.id,
+            ))
+
+        db.session.commit()
+        return redirect(url_for("commande_confirmation", gid=og.id))
+
+    disponibilites = {p.id: _stock_disponible(p) for p in produits}
+    return render_template(
+        "commander.html",
+        produits=produits,
+        disponibilites=disponibilites,
+        paliers=_paliers_livraison(),
+    )
+
+
+@app.route("/commander/confirmation/<int:gid>")
+def commande_confirmation(gid):
+    og = db.session.get(OrderGroup, gid)
+    if not og:
+        abort(404)
+    lignes = og.lignes.all()
+    return render_template("commande_confirmation.html", og=og, lignes=lignes)
+
+
 # Alias explicite (utilisé par url_for('accueil_public') dans les templates
 # publics) pour ne pas dépendre du nom historique "index".
 app.add_url_rule("/", endpoint="accueil_public", view_func=index)
@@ -281,21 +495,50 @@ def _get_or_create_client(name):
 # ---------- Tableau de bord ----------
 
 def _prix_achat_reel(product_id):
-    """Prix d'achat réel d'un produit, tel que défini sur sa fiche produit
-    (champ « prix d'achat par défaut » de la page Produits). Ce prix reflète
-    ce que l'entreprise paie réellement à ses fournisseurs et sert de
-    référence unique pour calculer le coût des produits vendus, plutôt qu'une
-    moyenne calculée sur l'historique des achats."""
+    """Prix d'achat par défaut d'un produit, tel que défini sur sa fiche
+    produit (champ « prix d'achat par défaut » de la page Produits). Utilisé
+    uniquement comme repli quand aucun achat n'a encore été enregistré pour ce
+    produit (ex. stock initial saisi sans transaction d'achat) — dans tous les
+    autres cas, _prix_achat_moyen_pondere() ci-dessous est la référence à
+    utiliser, car un même produit est souvent acheté à des prix différents
+    selon les fournisseurs ou les périodes."""
     product = db.session.get(Product, product_id)
     return product.prix_achat_defaut if product else 0.0
 
 
+def _prix_achat_moyen_pondere(product_id):
+    """Prix d'achat moyen pondéré (CMUP) d'un produit : moyenne de tous les
+    prix d'achat réellement payés pour ce produit (transactions de type
+    « achat », tout l'historique confondu), pondérée par la quantité de
+    chaque achat — c.-à-d. somme des montants achetés ÷ somme des quantités
+    achetées. Un même produit étant souvent acheté à des prix différents
+    (fournisseurs, saisons, négociations...), cette moyenne pondérée reflète
+    le coût réel bien mieux qu'un prix d'achat unique figé sur la fiche
+    produit. On ne restreint pas ce calcul à la période du rapport : les
+    produits vendus pendant la période ont pu être achetés avant elle, donc on
+    utilise l'historique complet des achats pour estimer leur coût.
+    Si aucun achat n'a jamais été enregistré pour ce produit, on retombe sur
+    le prix d'achat par défaut de la fiche produit.
+
+    Recalculé à chaque appel (pas de cache) : le prix moyen doit évoluer dès
+    qu'un nouvel achat est enregistré, y compris au sein d'une même requête."""
+    qte_totale, montant_total = db.session.query(
+        func.coalesce(func.sum(Transaction.quantity), 0.0),
+        func.coalesce(func.sum(Transaction.total), 0.0),
+    ).filter(
+        Transaction.type == "achat", Transaction.product_id == product_id
+    ).first()
+    if qte_totale:
+        return montant_total / qte_totale
+    return _prix_achat_reel(product_id)
+
+
 def _cout_produits_vendus(start=None, end=None):
-    """Coût d'achat (au prix d'achat réel défini sur chaque fiche produit) des
-    produits vendus sur la période — utilisé pour calculer la marge réelle des
-    ventes, plutôt que de comparer les ventes du jour aux achats du jour (qui
-    n'ont souvent aucun lien direct : un produit vendu aujourd'hui peut avoir
-    été acheté un autre jour)."""
+    """Coût d'achat (au prix d'achat moyen pondéré de chaque produit — voir
+    _prix_achat_moyen_pondere) des produits vendus sur la période — utilisé
+    pour calculer la marge réelle des ventes, plutôt que de comparer les
+    ventes du jour aux achats du jour (qui n'ont souvent aucun lien direct :
+    un produit vendu aujourd'hui peut avoir été acheté un autre jour)."""
     q = db.session.query(
         Transaction.product_id, func.coalesce(func.sum(Transaction.quantity), 0.0)
     ).filter(Transaction.type == "vente")
@@ -305,15 +548,16 @@ def _cout_produits_vendus(start=None, end=None):
         q = q.filter(Transaction.date <= end)
     total_cout = 0.0
     for product_id, qte_vendue in q.group_by(Transaction.product_id).all():
-        total_cout += (qte_vendue or 0.0) * _prix_achat_reel(product_id)
+        total_cout += (qte_vendue or 0.0) * _prix_achat_moyen_pondere(product_id)
     return total_cout
 
 
 def _valeur_pertes(start=None, end=None):
-    """Valeur d'achat (au prix d'achat réel de la fiche produit) des produits
-    cassés/périmés/perdus sur la période — cette valeur est une perte sèche
-    pour l'entreprise (le produit est sorti du stock sans générer de revenu)
-    et doit donc être soustraite du bénéfice réel."""
+    """Valeur d'achat (au prix d'achat moyen pondéré du produit — voir
+    _prix_achat_moyen_pondere) des produits cassés/périmés/perdus sur la
+    période — cette valeur est une perte sèche pour l'entreprise (le produit
+    est sorti du stock sans générer de revenu) et doit donc être soustraite du
+    bénéfice réel."""
     q = db.session.query(
         Loss.product_id, func.coalesce(func.sum(Loss.quantity), 0.0)
     )
@@ -323,8 +567,62 @@ def _valeur_pertes(start=None, end=None):
         q = q.filter(Loss.date <= end)
     total = 0.0
     for product_id, qte_perdue in q.group_by(Loss.product_id).all():
-        total += (qte_perdue or 0.0) * _prix_achat_reel(product_id)
+        total += (qte_perdue or 0.0) * _prix_achat_moyen_pondere(product_id)
     return total
+
+
+def _benefice_par_produit(start=None, end=None):
+    """Bénéfice réel par produit sur la période : chiffre d'affaires réellement
+    encaissé sur les ventes de ce produit sur la période (donc déjà basé sur le
+    prix de vente moyen pondéré réellement appliqué, puisqu'on additionne les
+    montants réels de chaque vente, à des prix parfois différents), moins le
+    coût d'achat de ce même produit au prix d'achat moyen pondéré (voir
+    _prix_achat_moyen_pondere) appliqué aux quantités vendues sur la période.
+
+    Un même produit étant souvent vendu et acheté à des prix différents selon
+    les jours/clients/fournisseurs, on utilise systématiquement des moyennes
+    pondérées par la quantité plutôt qu'un prix unique théorique : côté vente,
+    la moyenne pondérée découle naturellement de la somme des montants réels
+    (chiffre_affaires ÷ quantite_vendue) ; côté achat, elle est calculée
+    explicitement sur l'historique des achats.
+
+    Le bénéfice total tous produits confondus de la période s'obtient en
+    faisant la somme de ces bénéfices par produit, puis en déduisant de ce
+    total toutes les autres dépenses de la période qui ne sont pas le coût
+    d'achat des produits (dépenses générales + valeur des pertes) — ce coût
+    d'achat étant déjà déduit ci-dessus, produit par produit. Voir rapports()
+    pour ce calcul du bénéfice total."""
+    q = db.session.query(
+        Transaction.product_id,
+        func.coalesce(func.sum(Transaction.quantity), 0.0),
+        func.coalesce(func.sum(Transaction.total), 0.0),
+    ).filter(Transaction.type == "vente")
+    if start:
+        q = q.filter(Transaction.date >= start)
+    if end:
+        q = q.filter(Transaction.date <= end)
+
+    resultats = []
+    for product_id, qte_vendue, chiffre_affaires in q.group_by(Transaction.product_id).all():
+        product = db.session.get(Product, product_id)
+        if not product:
+            continue
+        qte_vendue = qte_vendue or 0.0
+        chiffre_affaires = chiffre_affaires or 0.0
+        prix_vente_moyen = (chiffre_affaires / qte_vendue) if qte_vendue else 0.0
+        prix_achat_moyen = _prix_achat_moyen_pondere(product_id)
+        cout_achat = qte_vendue * prix_achat_moyen
+        resultats.append({
+            "product": product,
+            "quantite_vendue": qte_vendue,
+            "prix_vente_moyen": prix_vente_moyen,
+            "prix_achat_moyen": prix_achat_moyen,
+            "chiffre_affaires": chiffre_affaires,
+            "cout_achat": cout_achat,
+            "benefice": chiffre_affaires - cout_achat,
+        })
+    resultats.sort(key=lambda r: r["benefice"], reverse=True)
+    return resultats
 
 
 @app.route("/dashboard")
@@ -688,9 +986,28 @@ def modifier_transaction(tid):
 # ---------- Ventes multi-produits (facture unique par client) ----------
 
 def _next_sale_numero():
+    """Génère le prochain numéro de facture "FAC-<année>-<séquence>".
+
+    Important : on se base sur le plus grand numéro déjà utilisé cette
+    année (et non sur un simple COUNT(*) des ventes), car une facture
+    supprimée (voir supprimer_facture / suppression du dernier produit
+    d'une transaction) réduit le nombre total de ventes sans libérer son
+    numéro — un COUNT(*) + 1 finit alors par recalculer un numéro déjà
+    attribué à une facture existante, ce qui provoque une erreur
+    "duplicate key" (contrainte d'unicité sur sales.numero) au moment de
+    l'INSERT, typiquement en confirmant une commande ou en enregistrant
+    une vente."""
     annee = datetime.utcnow().year
-    total = Sale.query.count()
-    return f"FAC-{annee}-{total + 1:05d}"
+    prefix = f"FAC-{annee}-"
+    max_seq = 0
+    existants = db.session.query(Sale.numero).filter(Sale.numero.like(f"{prefix}%")).all()
+    for (numero,) in existants:
+        try:
+            seq = int(numero.rsplit("-", 1)[-1])
+        except (ValueError, AttributeError):
+            continue
+        max_seq = max(max_seq, seq)
+    return f"{prefix}{max_seq + 1:05d}"
 
 
 @app.route("/ventes/nouvelle", methods=["GET", "POST"])
@@ -902,7 +1219,11 @@ def commandes():
         return redirect(url_for("commandes"))
 
     statut_filtre = request.args.get("statut", "en_attente")
-    q = Order.query
+    # Exclut les lignes issues d'un panier du site public (order_group_id
+    # renseigné) : celles-ci se gèrent sur la page Livraisons, par panier
+    # complet plutôt que ligne par ligne, avec les frais de livraison et le
+    # circuit de statut propres aux commandes en ligne.
+    q = Order.query.filter(Order.order_group_id.is_(None))
     if statut_filtre in ("en_attente", "confirmee", "annulee"):
         q = q.filter_by(status=statut_filtre)
     liste = q.order_by(Order.date.desc(), Order.created_at.desc()).all()
@@ -1076,6 +1397,226 @@ def supprimer_commande(oid):
             db.session.commit()
             flash("Commande supprimée.", "info")
     return redirect(url_for("commandes"))
+
+
+# ---------- Livraisons (commandes du site public) ----------
+#
+# Distinctes des "Commandes clients" ci-dessus (saisies directement par
+# l'équipe, un seul produit à la fois) : ici, un OrderGroup représente le
+# panier complet d'un client passé depuis /commander (plusieurs produits,
+# adresse de livraison, frais de livraison). Chaque produit du panier reste
+# une ligne Order comme pour les commandes internes (même logique de
+# réservation de stock via order_group_id), regroupées sous un même
+# OrderGroup.
+
+STATUTS_LIVRAISON = ["nouvelle", "confirmee", "en_livraison", "livree", "annulee"]
+
+
+@app.route("/livraisons")
+@login_required
+def livraisons():
+    statut_filtre = request.args.get("statut", "actives")
+    q = OrderGroup.query
+    if statut_filtre == "actives":
+        q = q.filter(OrderGroup.status.in_(["nouvelle", "confirmee", "en_livraison"]))
+    elif statut_filtre in STATUTS_LIVRAISON:
+        q = q.filter_by(status=statut_filtre)
+    groupes = q.order_by(OrderGroup.created_at.desc()).limit(300).all()
+    lignes_par_groupe = {g.id: g.lignes.all() for g in groupes}
+    return render_template(
+        "livraisons.html",
+        groupes=groupes,
+        lignes_par_groupe=lignes_par_groupe,
+        statut_filtre=statut_filtre,
+    )
+
+
+@app.route("/livraisons/<int:gid>/confirmer", methods=["POST"])
+@login_required
+def confirmer_livraison(gid):
+    """Vérifie le stock physique réel puis transforme tout le panier en une
+    facture unique (une Sale regroupant une Transaction par produit) — même
+    principe que "Vente rapide" (nouvelle_vente) et que la confirmation d'une
+    commande interne (confirmer_commande), mais pour plusieurs lignes à la
+    fois. Le stock n'est débité qu'à cette étape, jamais avant."""
+    og = db.session.get(OrderGroup, gid)
+    if not og or og.status != "nouvelle":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("livraisons"))
+
+    lignes = og.lignes.all()
+    if not lignes:
+        flash("Cette commande ne contient plus aucune ligne.", "danger")
+        return redirect(url_for("livraisons"))
+
+    # Vérifie le stock physique de chaque produit avant de débiter quoi que
+    # ce soit, pour ne jamais confirmer une commande partiellement honorable.
+    produits_par_id = {}
+    demande_par_produit = {}
+    for ligne in lignes:
+        product = db.session.get(Product, ligne.product_id)
+        if not product:
+            flash("Un des produits de cette commande n'existe plus.", "danger")
+            return redirect(url_for("livraisons"))
+        produits_par_id[product.id] = product
+        demande_par_produit[product.id] = demande_par_produit.get(product.id, 0) + ligne.quantity
+
+    for pid, qte in demande_par_produit.items():
+        product = produits_par_id[pid]
+        if product.stock < qte:
+            flash(
+                f"Stock physique insuffisant pour confirmer cette commande : {product.name} "
+                f"(disponible : {product.stock:g} {product.unit}, demandé : {qte:g}).",
+                "danger",
+            )
+            return redirect(url_for("livraisons"))
+
+    vente = Sale(
+        numero=_next_sale_numero(),
+        partner_id=og.client_id,
+        total=og.total_produits,
+        date=date.today(),
+        user_id=current_user.id,
+    )
+    db.session.add(vente)
+    db.session.flush()  # obtenir vente.id avant de créer les lignes
+
+    for ligne in lignes:
+        product = produits_par_id[ligne.product_id]
+        product.stock -= ligne.quantity
+        db.session.add(Transaction(
+            type="vente",
+            product_id=product.id,
+            partner_id=og.client_id,
+            sale_id=vente.id,
+            quantity=ligne.quantity,
+            unit_price=ligne.unit_price,
+            total=ligne.total,
+            date=date.today(),
+            note=f"Commande en ligne {og.numero} confirmée",
+            user_id=current_user.id,
+        ))
+        ligne.status = "confirmee"
+        ligne.date_confirmation = date.today()
+        ligne.sale_id = vente.id
+
+    og.status = "confirmee"
+    og.sale_id = vente.id
+    og.confirmed_at = datetime.utcnow()
+
+    db.session.commit()
+    flash(
+        f"Commande {og.numero} transformée en vente {vente.numero} "
+        f"({og.total_produits:.0f} FCFA + {og.delivery_fee:.0f} FCFA de livraison). Stock mis à jour.",
+        "success",
+    )
+    return redirect(url_for("livraisons"))
+
+
+@app.route("/livraisons/<int:gid>/statut", methods=["POST"])
+@login_required
+def changer_statut_livraison(gid):
+    """Fait avancer une commande confirmée dans le circuit de livraison :
+    confirmee -> en_livraison -> livree. Ne modifie ni le stock ni la facture,
+    déjà réglés à la confirmation (confirmer_livraison) : sert uniquement à
+    organiser/suivre les livraisons."""
+    og = db.session.get(OrderGroup, gid)
+    if not og:
+        abort(404)
+    nouveau_statut = request.form.get("statut")
+    transitions_valides = {"confirmee": "en_livraison", "en_livraison": "livree"}
+    if transitions_valides.get(og.status) != nouveau_statut:
+        flash("Changement de statut invalide.", "danger")
+        return redirect(url_for("livraisons"))
+    og.status = nouveau_statut
+    if nouveau_statut == "livree":
+        og.delivered_at = datetime.utcnow()
+    db.session.commit()
+    flash(f"Commande {og.numero} : statut mis à jour.", "success")
+    return redirect(url_for("livraisons"))
+
+
+@app.route("/livraisons/<int:gid>/annuler", methods=["POST"])
+@login_required
+def annuler_livraison(gid):
+    og = db.session.get(OrderGroup, gid)
+    if not og or og.status != "nouvelle":
+        flash("Commande introuvable ou déjà traitée.", "danger")
+        return redirect(url_for("livraisons"))
+    og.status = "annulee"
+    for ligne in og.lignes.all():
+        ligne.status = "annulee"
+    db.session.commit()
+    flash(f"Commande {og.numero} annulée. Le stock réservé est de nouveau disponible.", "info")
+    return redirect(url_for("livraisons"))
+
+
+@app.route("/livraison/tarifs", methods=["GET", "POST"])
+@login_required
+@admin_required
+def tarifs_livraison():
+    """Gestion des paliers de prix de livraison affichés et appliqués sur la
+    page publique /commander, selon la quantité totale du panier."""
+    if request.method == "POST":
+        try:
+            quantite_min = float(request.form["quantite_min"])
+            quantite_max_raw = request.form.get("quantite_max", "").strip()
+            quantite_max = float(quantite_max_raw) if quantite_max_raw else None
+            prix = float(request.form["prix"])
+        except (KeyError, ValueError):
+            flash("Valeurs invalides.", "danger")
+            return redirect(url_for("tarifs_livraison"))
+
+        if quantite_min <= 0 or prix < 0 or (quantite_max is not None and quantite_max < quantite_min):
+            flash("Le palier saisi est invalide (vérifiez les quantités min/max et le prix).", "danger")
+        else:
+            db.session.add(DeliveryTier(quantite_min=quantite_min, quantite_max=quantite_max, prix=prix))
+            db.session.commit()
+            flash("Palier de livraison ajouté.", "success")
+        return redirect(url_for("tarifs_livraison"))
+
+    liste = DeliveryTier.query.order_by(DeliveryTier.quantite_min).all()
+    return render_template("livraison_tarifs.html", liste=liste)
+
+
+@app.route("/livraison/tarifs/<int:tid>/modifier", methods=["POST"])
+@login_required
+@admin_required
+def modifier_tarif_livraison(tid):
+    tier = db.session.get(DeliveryTier, tid)
+    if not tier:
+        abort(404)
+    try:
+        quantite_min = float(request.form["quantite_min"])
+        quantite_max_raw = request.form.get("quantite_max", "").strip()
+        quantite_max = float(quantite_max_raw) if quantite_max_raw else None
+        prix = float(request.form["prix"])
+    except (KeyError, ValueError):
+        flash("Valeurs invalides.", "danger")
+        return redirect(url_for("tarifs_livraison"))
+
+    if quantite_min <= 0 or prix < 0 or (quantite_max is not None and quantite_max < quantite_min):
+        flash("Le palier saisi est invalide (vérifiez les quantités min/max et le prix).", "danger")
+        return redirect(url_for("tarifs_livraison"))
+
+    tier.quantite_min = quantite_min
+    tier.quantite_max = quantite_max
+    tier.prix = prix
+    db.session.commit()
+    flash("Palier modifié.", "success")
+    return redirect(url_for("tarifs_livraison"))
+
+
+@app.route("/livraison/tarifs/<int:tid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_tarif_livraison(tid):
+    tier = db.session.get(DeliveryTier, tid)
+    if tier:
+        db.session.delete(tier)
+        db.session.commit()
+        flash("Palier supprimé.", "info")
+    return redirect(url_for("tarifs_livraison"))
 
 
 # ---------- Produits ----------
@@ -1582,16 +2123,18 @@ def rapports():
         .all()
     )
 
-    # Bénéfice réel de la période, calculé exactement comme sur le tableau de
-    # bord : marge sur les produits vendus (prix de vente − coût d'achat réel
-    # de la fiche produit) moins les dépenses générales et la valeur d'achat
-    # des pertes (produits cassés/périmés) sur la période — et non plus
-    # ventes − achats − dépenses, qui ne reflète pas la rentabilité réelle si
-    # les achats et les ventes de la période ne portent pas sur les mêmes
-    # produits/quantités.
-    cout_vendus_total = _cout_produits_vendus(date_debut_d, date_fin_d)
+    # Bénéfice réel par produit sur la période : pour chaque produit, la
+    # différence entre son chiffre d'affaires réel et son coût d'achat réel
+    # (prix d'achat de la fiche produit × quantité vendue).
+    benefice_par_produit = _benefice_par_produit(date_debut_d, date_fin_d)
     pertes_total = _valeur_pertes(date_debut_d, date_fin_d)
-    marge_totale = ventes_total - cout_vendus_total
+
+    # Bénéfice total tous produits confondus de la période = somme des
+    # bénéfices réels par produit ci-dessus, moins toutes les autres dépenses
+    # de la période qui ne sont pas le coût d'achat des produits (déjà déduit
+    # produit par produit) : dépenses générales (loyer, salaires, transport,
+    # etc.) et valeur d'achat des produits cassés/périmés/perdus.
+    marge_totale = sum(r["benefice"] for r in benefice_par_produit)
     benefice = marge_totale - depenses_total - pertes_total
 
     return render_template(
@@ -1603,6 +2146,7 @@ def rapports():
         depenses_total=depenses_total,
         pertes_total=pertes_total,
         benefice=benefice,
+        benefice_par_produit=benefice_par_produit,
         par_produit=par_produit,
         par_categorie_depense=par_categorie_depense,
         labels=labels,

@@ -1,0 +1,44 @@
+{% extends "public_base.html" %}
+{% block title %}Commande enregistrée{% endblock %}
+{% block content %}
+
+<section class="sp-section">
+  <div class="container" style="max-width: 640px;">
+    <div class="sp-card p-4 p-md-5 text-center">
+      <div class="sp-icon-badge mx-auto mb-3" style="width:4rem;height:4rem;font-size:2rem;">✅</div>
+      <h2 class="fw-bold mb-2">Merci, votre commande est enregistrée !</h2>
+      <p class="text-muted mb-4">Numéro de commande : <strong>{{ og.numero }}</strong><br>Notre équipe va vous contacter au {{ og.client_phone }} pour confirmer la livraison.</p>
+
+      <div class="table-responsive text-start mb-4">
+        <table class="table align-middle mb-0">
+          <thead><tr class="small text-muted"><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Total</th></tr></thead>
+          <tbody>
+            {% for l in lignes %}
+            <tr>
+              <td>{{ l.product.name if l.product else '—' }}</td>
+              <td class="text-center">{{ '%.0f'|format(l.quantity) }}</td>
+              <td class="text-end">{{ '%.0f'|format(l.total) }} FCFA</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="text-start mb-4">
+        <div class="d-flex justify-content-between mb-1"><span>Sous-total produits</span><strong>{{ '%.0f'|format(og.total_produits) }} FCFA</strong></div>
+        <div class="d-flex justify-content-between mb-1"><span>Frais de livraison</span><strong>{{ '%.0f'|format(og.delivery_fee) }} FCFA</strong></div>
+        <hr>
+        <div class="d-flex justify-content-between fs-5"><span class="fw-bold">Total</span><strong>{{ '%.0f'|format(og.total) }} FCFA</strong></div>
+      </div>
+
+      <p class="small text-muted mb-4">Adresse de livraison indiquée : {{ og.client_address }}</p>
+
+      <div class="d-flex gap-2 justify-content-center flex-wrap">
+        <a href="{{ url_for('commander') }}" class="btn btn-sp-outline">Passer une autre commande</a>
+        <a href="{{ url_for('accueil_public') }}" class="btn btn-sp-primary">Retour à l'accueil</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

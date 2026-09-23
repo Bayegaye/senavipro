@@ -1,0 +1,197 @@
+{% extends "public_base.html" %}
+{% block title %}Commander en ligne{% endblock %}
+{% block extra_head %}
+<link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+<meta name="theme-color" content="#E8590C">
+<link rel="apple-touch-icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+<style>
+  .sp-qty-input { width: 4.5rem; text-align: center; }
+  .sp-cart-bar {
+    position: sticky; bottom: 0; z-index: 1030; background: #fff;
+    box-shadow: 0 -4px 18px rgba(43,33,24,.12); border-top: 1px solid #f0e6d8;
+  }
+  .sp-product-row.is-in-cart { background: var(--sp-orange-soft); }
+</style>
+{% endblock %}
+{% block content %}
+
+<section class="sp-section pb-3" style="background: var(--sp-orange-soft);">
+  <div class="container text-center">
+    <div class="sp-eyebrow mb-2">Commande en ligne</div>
+    <h1 class="fw-bold mb-2">Composez votre commande</h1>
+    <p class="mb-0" style="color:#5a4c3d;">Choisissez vos produits et quantités — le prix de livraison s'affiche automatiquement selon la quantité totale commandée.</p>
+  </div>
+</section>
+
+<section class="sp-section pt-4 pb-5">
+  <div class="container" style="max-width: 720px;">
+
+    {% if not produits %}
+    <div class="sp-card p-4 text-center">
+      <p class="mb-3">Aucun produit n'est disponible à la commande en ligne pour le moment.</p>
+      <a href="https://wa.me/{{ company_info.phone_intl }}" target="_blank" rel="noopener" class="btn btn-sp-whatsapp">Nous écrire sur WhatsApp</a>
+    </div>
+    {% else %}
+
+    <form method="POST" id="commande-form">
+      <div class="sp-card p-3 p-md-4 mb-4">
+        <h5 class="fw-bold mb-3">1. Vos produits</h5>
+        <div class="table-responsive">
+          <table class="table align-middle mb-0">
+            <thead>
+              <tr class="small text-muted">
+                <th>Produit</th><th class="text-end">Prix unitaire</th><th class="text-center">Quantité</th><th class="text-end">Sous-total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in produits %}
+              <tr class="sp-product-row" data-product-id="{{ p.id }}" data-price="{{ p.prix_vente_defaut }}">
+                <td>
+                  <div class="fw-semibold">{{ p.name }}</div>
+                  <div class="small text-muted">
+                    {{ '%.0f'|format(p.prix_vente_defaut) }} FCFA / {{ p.unit }}
+                    {% set dispo = disponibilites.get(p.id, 0) %}
+                    {% if dispo <= 0 %}
+                      <span class="text-warning">· rupture de stock (commande possible, livrée dès réapprovisionnement)</span>
+                    {% endif %}
+                  </div>
+                </td>
+                <td class="text-end">{{ '%.0f'|format(p.prix_vente_defaut) }}</td>
+                <td class="text-center">
+                  <input type="number" class="form-control form-control-sm sp-qty-input mx-auto sp-qty" min="0" step="any" value="0" inputmode="decimal">
+                </td>
+                <td class="text-end sp-line-total fw-semibold">0</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="sp-card p-3 p-md-4 mb-4">
+        <h5 class="fw-bold mb-3">2. Vos coordonnées de livraison</h5>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label">Nom et prénom</label>
+            <input type="text" name="client_name" class="form-control" placeholder="Votre nom" required>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Téléphone</label>
+            <input type="tel" name="client_phone" class="form-control" placeholder="77 000 00 00" required>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Adresse de livraison</label>
+            <input type="text" name="client_address" class="form-control" placeholder="Quartier, ville, point de repère..." required>
+          </div>
+          <div class="col-12">
+            <label class="form-label">Note (optionnel)</label>
+            <input type="text" name="note" class="form-control" placeholder="Précisions utiles pour la livraison">
+          </div>
+        </div>
+      </div>
+
+      <div class="sp-card p-3 p-md-4 mb-5">
+        <h5 class="fw-bold mb-3">3. Récapitulatif</h5>
+        <div class="d-flex justify-content-between mb-2"><span>Sous-total produits</span><strong id="sp-total-produits">0 FCFA</strong></div>
+        <div class="d-flex justify-content-between mb-2">
+          <span>Frais de livraison <span class="text-muted small">(<span id="sp-qte-totale">0</span> article(s))</span></span>
+          <strong id="sp-frais-livraison">0 FCFA</strong>
+        </div>
+        <hr>
+        <div class="d-flex justify-content-between fs-5"><span class="fw-bold">Total à payer à la livraison</span><strong id="sp-total-general">0 FCFA</strong></div>
+        <p class="text-muted small mt-3 mb-0">
+          Paiement à la livraison. Après validation, notre équipe vous contacte au numéro indiqué pour confirmer votre commande.
+        </p>
+      </div>
+
+      {% for p in produits %}
+      <input type="hidden" class="sp-hidden-pid" name="product_id[]" value="{{ p.id }}" disabled>
+      <input type="hidden" class="sp-hidden-qty" name="quantity[]" value="0" disabled>
+      {% endfor %}
+
+      <div class="sp-cart-bar py-3 px-3 rounded-top-4">
+        <div class="container d-flex justify-content-between align-items-center px-0" style="max-width:720px;">
+          <div>
+            <div class="small text-muted">Total</div>
+            <div class="fs-5 fw-bold" id="sp-total-bar">0 FCFA</div>
+          </div>
+          <button type="submit" class="btn btn-sp-primary btn-lg" id="sp-submit-btn" disabled>Valider la commande</button>
+        </div>
+      </div>
+    </form>
+
+    {% endif %}
+  </div>
+</section>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var paliers = [
+    {% for t in paliers %}
+    { min: {{ t.quantite_min }}, max: {{ 'null' if t.quantite_max is none else t.quantite_max }}, prix: {{ t.prix }} }{{ "," if not loop.last }}
+    {% endfor %}
+  ];
+
+  function fraisLivraison(qte) {
+    if (qte <= 0 || !paliers.length) return 0;
+    var meilleur = null;
+    for (var i = 0; i < paliers.length; i++) {
+      var p = paliers[i];
+      if (qte >= p.min && (p.max === null || qte <= p.max)) {
+        if (!meilleur || p.min > meilleur.min) meilleur = p;
+      }
+    }
+    if (meilleur) return meilleur.prix;
+    // Au-delà de tous les paliers : on applique le tarif du plus élevé.
+    var dernier = paliers[paliers.length - 1];
+    return dernier ? dernier.prix : 0;
+  }
+
+  function fmt(n) {
+    return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " FCFA";
+  }
+
+  var rows = document.querySelectorAll(".sp-product-row");
+  var hiddenPids = document.querySelectorAll(".sp-hidden-pid");
+  var hiddenQtys = document.querySelectorAll(".sp-hidden-qty");
+
+  function recalc() {
+    var totalProduits = 0, qteTotale = 0;
+    rows.forEach(function (row, idx) {
+      var qtyInput = row.querySelector(".sp-qty");
+      var qty = parseFloat(qtyInput.value) || 0;
+      if (qty < 0) qty = 0;
+      var price = parseFloat(row.getAttribute("data-price")) || 0;
+      var lineTotal = qty * price;
+      row.querySelector(".sp-line-total").textContent = fmt(lineTotal);
+      row.classList.toggle("is-in-cart", qty > 0);
+      totalProduits += lineTotal;
+      qteTotale += qty;
+      hiddenQtys[idx].value = qty;
+      hiddenQtys[idx].disabled = qty <= 0;
+      hiddenPids[idx].disabled = qty <= 0;
+    });
+    var frais = fraisLivraison(qteTotale);
+    var total = totalProduits + frais;
+    document.getElementById("sp-total-produits").textContent = fmt(totalProduits);
+    document.getElementById("sp-qte-totale").textContent = qteTotale % 1 === 0 ? qteTotale : qteTotale.toFixed(2);
+    document.getElementById("sp-frais-livraison").textContent = fmt(frais);
+    document.getElementById("sp-total-general").textContent = fmt(total);
+    document.getElementById("sp-total-bar").textContent = fmt(total);
+    document.getElementById("sp-submit-btn").disabled = qteTotale <= 0;
+  }
+
+  rows.forEach(function (row) {
+    row.querySelector(".sp-qty").addEventListener("input", recalc);
+  });
+  recalc();
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("{{ url_for('static', filename='sw.js') }}").catch(function () {});
+  }
+})();
+</script>
+{% endblock %}
