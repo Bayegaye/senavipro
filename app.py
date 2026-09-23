@@ -6,7 +6,7 @@ from functools import wraps
 
 from flask import (
     Flask, render_template, redirect, url_for, request, flash, session,
-    Response, abort
+    Response, abort, jsonify
 )
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
@@ -232,6 +232,30 @@ def logout():
     logout_user()
     flash("Vous êtes déconnecté(e).", "info")
     return redirect(url_for("login"))
+
+
+# ---------- Application Android (Trusted Web Activity) ----------
+#
+# Fichier de vérification exigé par Android pour lier ce domaine à
+# l'application Android "Senavi Livraison" (package com.senavipro.app) :
+# sans lui, l'application s'affiche avec la barre d'adresse du navigateur
+# au lieu du plein écran natif. Doit rester accessible sans authentification
+# à l'URL exacte /.well-known/assetlinks.json.
+
+@app.route("/.well-known/assetlinks.json")
+def android_asset_links():
+    return jsonify([
+        {
+            "relation": ["delegate_permission/common.handle_all_urls"],
+            "target": {
+                "namespace": "android_app",
+                "package_name": "com.senavipro.app",
+                "sha256_cert_fingerprints": [
+                    "C1:A1:F4:03:6C:AF:B4:1A:C5:B4:D3:E6:A0:64:D6:BC:2F:F1:48:A4:DD:AF:78:0B:52:1D:1A:43:AC:14:5A:C3"
+                ],
+            },
+        }
+    ])
 
 
 # ---------- Site public (vitrine) ----------
