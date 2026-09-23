@@ -1,0 +1,322 @@
+{% extends "base.html" %}
+{% block title %}{{ formation.title }} — Gestion{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>{{ formation.title }}</h3>
+  <a href="{{ url_for('admin_formations') }}" class="btn btn-outline-secondary btn-sm">← Toutes les formations</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card card-course p-3 mb-3">
+      <h5>Informations</h5>
+      <form method="POST" action="{{ url_for('admin_modifier_formation', cid=formation.id) }}">
+        <div class="mb-2">
+          <label class="form-label">Titre</label>
+          <input type="text" name="title" class="form-control" value="{{ formation.title }}" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="4">{{ formation.description or '' }}</textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Prix (FCFA)</label>
+          <input type="number" step="any" min="0" name="price" class="form-control" value="{{ formation.price }}" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Image de couverture (lien)</label>
+          <input type="text" name="image_url" class="form-control" value="{{ formation.image_url or '' }}">
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="published" id="published" {% if formation.published %}checked{% endif %}>
+          <label class="form-check-label" for="published">Formation publiée (visible dans le catalogue)</label>
+        </div>
+
+        <hr>
+        <h6>Annonce / Déroulement de la formation</h6>
+        <div class="form-text mb-2">Texte affiché en évidence sur la page publique de la formation, visible par tous (candidats non inscrits inclus) : dates, horaires, format des séances, attestation... Laissez vide si non utilisé.</div>
+        <div class="mb-3">
+          <textarea name="announcement" class="form-control" rows="6" placeholder="Ex : La formation se déroulera du ... au ..., les vendredis et samedis de 18h à 20h GMT via Google Meet...">{{ formation.announcement or '' }}</textarea>
+        </div>
+
+        <hr>
+        <h6>Paiement en ligne (Chariow)</h6>
+        <div class="form-text mb-2">
+          Lien de la page de paiement Chariow de cette formation (la page de votre produit Chariow). L'étudiant est redirigé vers ce lien pour payer, puis déclare son paiement via « J'ai déjà payé autrement » comme pour Wave — vous validez ensuite manuellement depuis Paiements / Inscriptions. Laissez vide pour ne pas afficher ce bouton.
+        </div>
+        <div class="mb-3">
+          <input type="text" name="chariow_product_id" class="form-control form-control-sm" placeholder="https://votreboutique.mychariow.online/prd_xxxxx" value="{{ formation.chariow_product_id or '' }}">
+        </div>
+
+        <button type="submit" class="btn btn-success w-100">Enregistrer</button>
+      </form>
+    </div>
+
+    <div class="card card-course p-3 mb-3">
+      <h5>Ressources de la formation</h5>
+      <div class="form-text mb-2">Liens affichés sur la page principale de la formation (setup logiciels, jeux de données, dossier Drive...). Ajoutez-en autant que nécessaire.</div>
+
+      {% for r in formation.resources %}
+      <form method="POST" action="{{ url_for('admin_modifier_ressource', rid=r.id) }}" class="row g-2 mb-2 align-items-center">
+        <div class="col-4">
+          <input type="text" name="label" class="form-control form-control-sm" placeholder="Libellé (ex : Logiciels)" value="{{ r.label or '' }}">
+        </div>
+        <div class="col-6">
+          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." value="{{ r.url }}" required>
+        </div>
+        <div class="col-2 d-flex gap-1">
+          <button class="btn btn-sm btn-outline-success" type="submit" title="Enregistrer">✏️</button>
+          <button class="btn btn-sm btn-outline-danger" type="submit" formaction="{{ url_for('admin_supprimer_ressource', rid=r.id) }}" formnovalidate onclick="return confirm('Supprimer cette ressource ?');" title="Supprimer">✕</button>
+        </div>
+      </form>
+      {% else %}
+      <p class="text-muted small">Aucune ressource pour l'instant.</p>
+      {% endfor %}
+
+      <hr>
+      <form method="POST" action="{{ url_for('admin_ajouter_ressource', cid=formation.id) }}" class="row g-2">
+        <div class="col-4">
+          <input type="text" name="label" class="form-control form-control-sm" placeholder="Libellé (ex : Dossier Drive complet)">
+        </div>
+        <div class="col-6">
+          <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." required>
+        </div>
+        <div class="col-2">
+          <button type="submit" class="btn btn-sm btn-success w-100" title="Ajouter">+</button>
+        </div>
+      </form>
+    </div>
+
+    <form method="POST" action="{{ url_for('admin_supprimer_formation', cid=formation.id) }}" onsubmit="return confirm('Supprimer définitivement cette formation et toutes ses leçons ?');">
+      <button class="btn btn-outline-danger btn-sm w-100">Supprimer cette formation</button>
+    </form>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card card-course p-3 mb-3">
+      <h5>Ajouter une leçon</h5>
+      <form method="POST" enctype="multipart/form-data" id="form-nouvelle-lecon">
+        <div class="mb-2">
+          <label class="form-label">Titre de la leçon</label>
+          <input type="text" name="title" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Texte / instructions (optionnel)</label>
+          <textarea name="content" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Lien vidéo (YouTube non répertorié, Vimeo ou Google Drive) — optionnel</label>
+          <input type="text" name="video_url" class="form-control" placeholder="https://...">
+          <div class="form-text">
+            La vidéo est lue directement sur la page de la leçon, sans bouton de téléchargement ni renvoi vers le site d'origine, pour YouTube, Vimeo et Google Drive.
+            Pensez à publier la vidéo en mode « Non répertorié » sur YouTube (pas « Public »), et pour Google Drive, à retirer la permission de téléchargement dans le partage du fichier (⋮ → Restreindre le téléchargement) pour une protection renforcée.
+          </div>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Document PDF ou archive ZIP (envoyer un fichier depuis l'ordinateur) — optionnel</label>
+          <input type="file" name="document_file" accept="application/pdf,.zip,application/zip,application/x-zip-compressed" class="form-control">
+          <div class="form-text">PDF pour un support de cours, ou ZIP pour un jeu de données d'exercice (shapefiles) ou un logiciel à installer. Taille max : {{ document_max_size_mo }} Mo.</div>
+        </div>
+        <div class="row">
+          <div class="col-8 mb-2">
+            <label class="form-label">OU lien document (Google Drive...) — optionnel</label>
+            <input type="text" name="document_url" class="form-control" placeholder="https://...">
+          </div>
+          <div class="col-4 mb-2">
+            <label class="form-label">Libellé du document</label>
+            <input type="text" name="document_label" class="form-control" placeholder="Support PDF">
+          </div>
+        </div>
+
+        <hr>
+        <div class="mb-2">
+          <label class="form-label fw-bold">Mode d'évaluation de la leçon</label>
+          <select name="evaluation_mode" id="evaluation_mode" class="form-select" onchange="majModeEvaluation()">
+            <option value="aucune">Aucune évaluation</option>
+            <option value="qcm">📝 QCM (quiz à choix multiples)</option>
+            <option value="devoir">📎 Devoir à rendre (corrigé par le professeur)</option>
+          </select>
+          <div class="form-text">L'étudiant ne pourra accéder à la leçon suivante qu'une fois cette leçon validée (quiz réussi ou devoir corrigé et accepté).</div>
+        </div>
+
+        <div id="bloc-quiz" class="d-none border rounded p-3 mb-2 bg-light">
+          <div class="row g-2 mb-3">
+            <div class="col-8">
+              <label class="form-label">Titre du quiz</label>
+              <input type="text" name="quiz_title" class="form-control form-control-sm" value="Quiz">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Seuil de réussite (%)</label>
+              <input type="number" name="quiz_pass_score" class="form-control form-control-sm" min="0" max="100" value="70">
+            </div>
+          </div>
+
+          <div id="liste-questions"></div>
+
+          <button type="button" class="btn btn-outline-success btn-sm w-100 mt-2" onclick="ajouterQuestion()">+ Ajouter une question</button>
+        </div>
+
+        <div id="bloc-devoir" class="d-none border rounded p-3 mb-2 bg-light">
+          <label class="form-label">Consignes du devoir à rendre</label>
+          <textarea name="devoir_consignes" class="form-control" rows="3" placeholder="Ex : réalisez une carte de la zone d'étude et envoyez le fichier .mxd ou l'export PDF."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 mt-3">Ajouter la leçon</button>
+      </form>
+    </div>
+
+    <template id="template-question">
+      <div class="question-bloc border rounded p-2 mb-2 bg-white">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <input type="text" name="q_text" class="form-control form-control-sm" placeholder="Énoncé de la question">
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.question-bloc').remove()" title="Supprimer cette question">✕</button>
+        </div>
+        <div class="small text-muted mb-1">Choix de réponse (cochez la bonne réponse)</div>
+        __CHOICES__
+      </div>
+    </template>
+
+    <script>
+      let questionIndex = 0;
+
+      function choixHtml(qIdx, choiceIdx) {
+        return `<div class="input-group input-group-sm mb-1">
+          <div class="input-group-text">
+            <input class="form-check-input mt-0" type="radio" name="q_correct_display_${qIdx}" value="${choiceIdx}" onclick="document.getElementById('q_correct_${qIdx}').value='${choiceIdx}'">
+          </div>
+          <input type="text" name="q_choice_${choiceIdx}" class="form-control" placeholder="Choix ${choiceIdx + 1}${choiceIdx >= 2 ? ' (optionnel)' : ''}">
+        </div>`;
+      }
+
+      function ajouterQuestion() {
+        const idx = questionIndex++;
+        const wrapper = document.createElement('div');
+        let choicesHtml = '';
+        for (let i = 0; i < 4; i++) {
+          choicesHtml += choixHtml(idx, i);
+        }
+        choicesHtml += `<input type="hidden" name="q_correct" id="q_correct_${idx}" value="">`;
+        wrapper.innerHTML = document.getElementById('template-question').innerHTML.replace('__CHOICES__', choicesHtml);
+        document.getElementById('liste-questions').appendChild(wrapper.firstElementChild);
+      }
+
+      function majModeEvaluation() {
+        const mode = document.getElementById('evaluation_mode').value;
+        document.getElementById('bloc-quiz').classList.toggle('d-none', mode !== 'qcm');
+        document.getElementById('bloc-devoir').classList.toggle('d-none', mode !== 'devoir');
+        if (mode === 'qcm' && document.querySelectorAll('#liste-questions .question-bloc').length === 0) {
+          ajouterQuestion();
+        }
+      }
+
+      document.getElementById('form-nouvelle-lecon').addEventListener('submit', function(e) {
+        if (document.getElementById('evaluation_mode').value === 'qcm') {
+          const questions = document.querySelectorAll('#liste-questions .question-bloc');
+          if (questions.length === 0) {
+            e.preventDefault();
+            alert('Ajoutez au moins une question, ou changez le mode d\'évaluation.');
+            return;
+          }
+          for (const q of questions) {
+            const correct = q.querySelector('input[type=hidden]').value;
+            if (!correct) {
+              e.preventDefault();
+              alert('Merci d\'indiquer la bonne réponse pour chaque question du quiz.');
+              return;
+            }
+          }
+        }
+      });
+    </script>
+
+    <div class="card card-course p-3">
+      <h5>Leçons ({{ lecons|length }})</h5>
+      {% for l in lecons %}
+      <div class="border rounded p-3 mb-2">
+        <form method="POST" action="{{ url_for('admin_modifier_lecon', lid=l.id) }}" enctype="multipart/form-data">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <input type="text" name="title" value="{{ l.title }}" class="form-control form-control-sm fw-bold">
+            <button class="btn btn-sm btn-outline-success" type="submit" title="Enregistrer">✏️</button>
+            <button class="btn btn-sm btn-outline-danger" type="submit" formaction="{{ url_for('admin_supprimer_lecon', lid=l.id) }}" formnovalidate onclick="return confirm('Supprimer cette leçon ?');" title="Supprimer">✕</button>
+          </div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">Mode d'évaluation</label>
+            <select name="evaluation_mode" class="form-select form-select-sm" onchange="document.getElementById('bloc-devoir-{{ l.id }}').classList.toggle('d-none', this.value !== 'devoir')">
+              <option value="aucune" {% if (l.evaluation_mode or 'aucune') == 'aucune' %}selected{% endif %}>Aucune évaluation</option>
+              <option value="qcm" {% if l.evaluation_mode == 'qcm' %}selected{% endif %}>📝 QCM</option>
+              <option value="devoir" {% if l.evaluation_mode == 'devoir' %}selected{% endif %}>📎 Devoir à rendre</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <a href="{{ url_for('admin_quiz', lid=l.id) }}" class="btn btn-sm {{ 'btn-outline-success' if l.quiz else 'btn-outline-secondary' }}">
+              {% if l.quiz %}📝 Quiz ({{ l.quiz.questions.count() }} question{{ 's' if l.quiz.questions.count() > 1 else '' }}){% else %}+ Ajouter un quiz{% endif %}
+            </a>
+          </div>
+          <div id="bloc-devoir-{{ l.id }}" class="mb-2 {{ '' if l.evaluation_mode == 'devoir' else 'd-none' }}">
+            <label class="form-label small mb-1">Consignes du devoir</label>
+            <textarea name="devoir_consignes" class="form-control form-control-sm" rows="2" placeholder="Consignes du devoir à rendre">{{ l.devoir_consignes or '' }}</textarea>
+          </div>
+
+          <textarea name="content" class="form-control form-control-sm mb-2" rows="2" placeholder="Texte / instructions">{{ l.content or '' }}</textarea>
+          <input type="text" name="video_url" value="{{ l.video_url or '' }}" class="form-control form-control-sm mb-1" placeholder="Lien vidéo (YouTube, Vimeo ou Google Drive)">
+          <div class="form-text mb-2">Lue directement sur la page, sans bouton de téléchargement, pour YouTube/Vimeo/Google Drive.</div>
+
+          <label class="form-label small mb-1">Document PDF ou archive ZIP</label>
+          {% if l.document_filename %}
+            <div class="d-flex align-items-center gap-2 mb-1 small">
+              <a href="{{ url_for('telecharger_document_lecon', lid=l.id) }}" target="_blank">📄 {{ l.document_filename }}</a>
+              <span class="text-muted">(déjà en ligne)</span>
+              <label class="ms-auto text-danger"><input type="checkbox" name="remove_document"> retirer</label>
+            </div>
+          {% endif %}
+          <input type="file" name="document_file" accept="application/pdf,.zip,application/zip,application/x-zip-compressed" class="form-control form-control-sm mb-2">
+
+          <div class="row g-2">
+            <div class="col-8">
+              <input type="text" name="document_url" value="{{ l.document_url or '' }}" class="form-control form-control-sm" placeholder="OU lien document">
+            </div>
+            <div class="col-4">
+              <input type="text" name="document_label" value="{{ l.document_label or '' }}" class="form-control form-control-sm" placeholder="Libellé document">
+            </div>
+          </div>
+        </form>
+
+        <div class="mt-2 pt-2 border-top">
+          <div class="small fw-bold text-muted mb-1">Ressources complémentaires de la leçon (Drive, etc.)</div>
+          {% for r in l.resources %}
+          <form method="POST" action="{{ url_for('admin_modifier_ressource_lecon', rid=r.id) }}" class="row g-1 mb-1 align-items-center">
+            <div class="col-4">
+              <input type="text" name="label" class="form-control form-control-sm" placeholder="Libellé" value="{{ r.label or '' }}">
+            </div>
+            <div class="col-6">
+              <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." value="{{ r.url }}" required>
+            </div>
+            <div class="col-2 d-flex gap-1">
+              <button class="btn btn-sm btn-outline-success" type="submit" title="Enregistrer">✏️</button>
+              <button class="btn btn-sm btn-outline-danger" type="submit" formaction="{{ url_for('admin_supprimer_ressource_lecon', rid=r.id) }}" formnovalidate onclick="return confirm('Supprimer cette ressource ?');" title="Supprimer">✕</button>
+            </div>
+          </form>
+          {% else %}
+          <p class="text-muted small mb-1">Aucune ressource complémentaire pour cette leçon.</p>
+          {% endfor %}
+          <form method="POST" action="{{ url_for('admin_ajouter_ressource_lecon', lid=l.id) }}" class="row g-1">
+            <div class="col-4">
+              <input type="text" name="label" class="form-control form-control-sm" placeholder="Libellé (ex : Données Drive)">
+            </div>
+            <div class="col-6">
+              <input type="text" name="url" class="form-control form-control-sm" placeholder="https://..." required>
+            </div>
+            <div class="col-2">
+              <button type="submit" class="btn btn-sm btn-success w-100" title="Ajouter">+</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">Aucune leçon pour l'instant.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

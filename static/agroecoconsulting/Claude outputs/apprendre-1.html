@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}{{ formation.title }} — Contenu{% endblock %}
+{% block content %}
+<h3 class="mb-1">{{ formation.title }}</h3>
+<p class="text-muted mb-4">{{ formation.description }}</p>
+
+{% for l in lecons %}
+{% set deverrouillee = lecons_deverrouillees.get(l.id, True) %}
+{% set validee = lecons_validees.get(l.id, True) %}
+{% set mode = l.evaluation_mode or 'aucune' %}
+<div id="lecon-{{ l.id }}" class="card card-course p-4 mb-3 {% if not deverrouillee %}bg-light{% endif %}">
+  <div class="d-flex justify-content-between align-items-start">
+    <h5 class="d-flex align-items-center gap-2 mb-0">
+      <span class="lesson-icon {% if not deverrouillee %}lesson-icon-locked{% endif %}">
+        {{ '🔒' if not deverrouillee else (l.title | icone_lecon) }}
+      </span>
+      {{ loop.index }}. {{ l.title }}
+    </h5>
+    {% if not current_user.is_admin %}
+      {% if not deverrouillee %}
+        <span class="badge bg-secondary">🔒 Verrouillée</span>
+      {% elif mode != 'aucune' and validee %}
+        <span class="badge bg-success">✅ Validée</span>
+      {% elif mode != 'aucune' %}
+        <span class="badge bg-warning text-dark">À valider</span>
+      {% endif %}
+    {% endif %}
+  </div>
+
+  {% if not deverrouillee %}
+    <p class="text-muted small mb-0">L'accès à cette leçon n'a pas encore été autorisé par l'administrateur.</p>
+  {% else %}
+    {% if l.video_url %}
+      {% set resume = l.content or formation.description %}
+      <div class="lesson-intro mb-3">
+        {% if formation.image_url %}
+        <div class="lesson-intro-banner">
+          <img src="{{ formation.image_url }}" alt="{{ formation.title }}" loading="lazy">
+          <div class="lesson-intro-brand">
+            <img src="{{ url_for('static', filename='images/logo.png') }}" alt="{{ cabinet_name }}">
+            <span>{{ cabinet_name }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% if resume %}
+        <div class="lesson-intro-body">
+          <div class="lesson-intro-eyebrow">📽️ Avant de démarrer la vidéo</div>
+          <p class="mb-0">{{ resume }}</p>
+        </div>
+        {% endif %}
+      </div>
+      {% set embed_url = l.video_url | video_embed_url %}
+      {% if embed_url %}
+        <div class="ratio ratio-16x9 mb-2" style="max-width: 640px;">
+          <iframe src="{{ embed_url }}" title="{{ l.title }}" frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen></iframe>
+        </div>
+      {% else %}
+        <div class="mb-2">
+          <a href="{{ l.video_url }}" target="_blank" class="btn btn-outline-success btn-sm">▶ Regarder la vidéo</a>
+        </div>
+      {% endif %}
+    {% elif l.content %}
+      <p>{{ l.content }}</p>
+    {% endif %}
+    {% if l.document_filename %}
+      <div class="mb-2">
+        <a href="{{ url_for('telecharger_document_lecon', lid=l.id) }}" target="_blank" class="btn btn-outline-secondary btn-sm">📄 {{ l.document_label or l.document_filename }}</a>
+      </div>
+    {% elif l.document_url %}
+      <div class="mb-2">
+        <a href="{{ l.document_url }}" target="_blank" class="btn btn-outline-secondary btn-sm">📄 {{ l.document_label or 'Télécharger le document' }}</a>
+      </div>
+    {% endif %}
+    {% set lesson_resources = l.resources.all() %}
+    {% if lesson_resources %}
+      <div class="mb-2 d-flex flex-wrap gap-2">
+        {% for r in lesson_resources %}
+          <a href="{{ r.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">📁 {{ r.label or 'Ressource' }}</a>
+        {% endfor %}
+      </div>
+    {% endif %}
+    {% if mode == 'qcm' and l.quiz %}
+      <div>
+        <a href="{{ url_for('passer_quiz', lid=l.id) }}" class="btn btn-warning btn-sm">📝 {{ l.quiz.title }}</a>
+        {% if l.id in meilleurs_scores %}
+          <span class="badge {{ 'bg-success' if meilleurs_scores[l.id].passed else 'bg-secondary' }} ms-1">
+            Meilleur score : {{ meilleurs_scores[l.id].score }}%
+          </span>
+        {% endif %}
+      </div>
+    {% elif mode == 'devoir' %}
+      <div>
+        <a href="{{ url_for('rendre_devoir', lid=l.id) }}" class="btn btn-warning btn-sm">📎 Devoir à rendre</a>
+        {% if l.id in dernieres_soumissions %}
+          {% set statut = dernieres_soumissions[l.id].status %}
+          <span class="badge {{ 'bg-success' if statut == 'validee' else ('bg-danger' if statut == 'rejetee' else 'bg-secondary') }} ms-1">
+            {% if statut == 'validee' %}Devoir validé{% elif statut == 'rejetee' %}Devoir rejeté{% else %}En attente de correction{% endif %}
+          </span>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% else %}
+<div class="alert alert-info">Le contenu de cette formation sera ajouté prochainement.</div>
+{% endfor %}
+{% endblock %}

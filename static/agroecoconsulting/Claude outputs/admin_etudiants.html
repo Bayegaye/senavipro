@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Étudiants{% endblock %}
+{% block content %}
+<h3 class="mb-1">Étudiants inscrits</h3>
+<p class="text-muted mb-4">Regroupés par formation — un même étudiant apparaît sous chacune des formations auxquelles il est inscrit.</p>
+
+{% for bloc in par_formation %}
+<div class="card card-course p-3 mb-3">
+  <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+    <h5 class="mb-0">{{ bloc.course.title }}</h5>
+    <span class="badge bg-success">{{ bloc.nb_validees }} étudiant{{ 's' if bloc.nb_validees != 1 else '' }} validé{{ 's' if bloc.nb_validees != 1 else '' }}</span>
+  </div>
+  {% if bloc.inscriptions %}
+    <div class="table-responsive">
+    <table class="table table-hover table-sm align-middle mb-0">
+      <thead><tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Statut</th><th>Inscrit le</th></tr></thead>
+      <tbody>
+      {% for e in bloc.inscriptions %}
+        <tr>
+          <td>{{ e.student.full_name }}</td>
+          <td>{{ e.student.email }}</td>
+          <td>{{ e.student.phone or '—' }}</td>
+          <td>
+            <span class="badge {{ 'bg-success' if e.status == 'validee' else ('bg-danger' if e.status == 'rejetee' else 'bg-warning text-dark') }}">
+              {{ 'Validée' if e.status == 'validee' else ('Rejetée' if e.status == 'rejetee' else 'En attente') }}
+            </span>
+          </td>
+          <td class="text-muted small">{{ e.created_at.strftime('%d/%m/%Y') if e.created_at else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  {% else %}
+    <p class="text-muted small mb-0">Aucun étudiant inscrit à cette formation pour le moment.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="alert alert-info">Aucune formation créée pour le moment.</div>
+{% endfor %}
+
+{% if etudiants_sans_formation %}
+<div class="card card-course p-3">
+  <h5 class="mb-2">Comptes étudiants sans inscription</h5>
+  <p class="text-muted small mb-2">Comptes créés mais qui ne se sont encore inscrits à aucune formation.</p>
+  <div class="table-responsive">
+  <table class="table table-hover table-sm align-middle mb-0">
+    <thead><tr><th>Nom</th><th>Email</th><th>Téléphone</th><th>Créé le</th></tr></thead>
+    <tbody>
+    {% for u in etudiants_sans_formation %}
+      <tr>
+        <td>{{ u.full_name }}</td>
+        <td>{{ u.email }}</td>
+        <td>{{ u.phone or '—' }}</td>
+        <td class="text-muted small">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '—' }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

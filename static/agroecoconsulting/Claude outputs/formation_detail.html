@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+{% block title %}{{ formation.title }}{% endblock %}
+{% block content %}
+<div class="row g-4">
+  <div class="col-lg-8">
+    <div class="card card-course p-4">
+      <h2>{{ formation.title }}</h2>
+      <p class="text-muted">{{ formation.description }}</p>
+
+      {% if formation.announcement %}
+      <div class="alert alert-success mb-3" style="white-space: pre-line;">
+        <div class="fw-bold mb-1">📢 Déroulement de la formation</div>
+        {{ formation.announcement }}
+      </div>
+      {% endif %}
+
+      {% set acces_ressources = current_user.is_authenticated and (current_user.is_admin or (mon_inscription and mon_inscription.status == 'validee')) %}
+      {% set ressources = formation.resources.all() %}
+      {% if acces_ressources and ressources %}
+      <div class="mb-3">
+        <div class="fw-bold small text-muted mb-1">Ressources de la formation</div>
+        <div class="d-flex flex-wrap gap-2">
+          {% for r in ressources %}
+            <a href="{{ r.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">📁 {{ r.label or 'Ressource' }}</a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+      <h5 class="mt-3">Contenu de la formation ({{ lecons|length }} leçon{{ 's' if lecons|length > 1 else '' }})</h5>
+      <ul class="list-group list-group-flush">
+        {% for l in lecons %}
+        <li class="list-group-item p-0">
+          <a class="lesson-btn" href="{{ url_for('apprendre', cid=formation.id, _anchor='lecon-' ~ l.id) }}"
+             title="Accéder au contenu détaillé de cette leçon">
+            <span class="lesson-icon">{{ l.title | icone_lecon }}</span>
+            <span>{{ l.title }}</span>
+            <span class="lesson-chevron">›</span>
+          </a>
+        </li>
+        {% else %}
+        <li class="list-group-item text-muted">Le contenu sera ajouté prochainement.</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+
+  <div class="col-lg-4">
+    <div class="card card-course p-4">
+      <div class="price-badge fs-3 mb-3">{{ '%.0f'|format(formation.price) }} FCFA</div>
+
+      {% if not current_user.is_authenticated %}
+        <p class="text-muted small">Connectez-vous ou créez un compte pour vous inscrire à cette formation.</p>
+        <a href="{{ url_for('login') }}" class="btn btn-success w-100 mb-2">Se connecter</a>
+        <a href="{{ url_for('register') }}" class="btn btn-outline-success w-100">Créer un compte</a>
+
+      {% elif current_user.is_admin %}
+        <p class="text-muted small">Vous êtes connecté en tant qu'administrateur.</p>
+        <a href="{{ url_for('apprendre', cid=formation.id) }}" class="btn btn-outline-success w-100">Aperçu du contenu</a>
+
+      {% elif mon_inscription and mon_inscription.status == 'validee' %}
+        {% if formation.date_fin and now.date() > formation.date_fin %}
+          <div class="alert alert-secondary mb-0">
+            Cette formation est terminée depuis le {{ formation.date_fin.strftime('%d/%m/%Y') }}. L'accès au contenu n'est plus disponible.
+          </div>
+        {% else %}
+          <div class="alert alert-success">Votre paiement a été validé.</div>
+          <a href="{{ url_for('apprendre', cid=formation.id) }}" class="btn btn-success w-100">Accéder à la formation</a>
+          {% if formation.date_fin %}
+            <p class="text-muted small mt-2 mb-0">Accès disponible jusqu'au {{ formation.date_fin.strftime('%d/%m/%Y') }}.</p>
+          {% endif %}
+        {% endif %}
+
+      {% elif mon_inscription and mon_inscription.status == 'en_attente' %}
+        <div class="alert alert-warning mb-0">
+          Votre inscription est enregistrée et en attente de vérification du paiement
+          (référence : {{ mon_inscription.payment_reference }}). Vous recevrez l'accès dès validation.
+        </div>
+
+      {% elif mon_inscription and mon_inscription.status == 'rejetee' %}
+        <div class="alert alert-danger">
+          Votre précédente inscription a été rejetée{% if mon_inscription.note_admin %} : {{ mon_inscription.note_admin }}{% endif %}.
+          Vous pouvez soumettre une nouvelle inscription ci-dessous.
+        </div>
+      {% endif %}
+
+      {% if current_user.is_authenticated and not current_user.is_admin and (not mon_inscription or mon_inscription.status == 'rejetee') %}
+        {% if paydunya_enabled or chariow_enabled %}
+        <hr>
+        <h6>Payer en ligne</h6>
+        <p class="text-muted small">
+          Paiement immédiat par Wave, Orange Money, Free Money ou carte bancaire.
+          Votre accès est débloqué automatiquement dès la confirmation du paiement, sans attente.
+        </p>
+        {% if paydunya_enabled %}
+        <form method="POST" action="{{ url_for('payer_paydunya', cid=formation.id) }}">
+          <button type="submit" class="btn btn-success w-100 mb-2">
+            Payer {{ '%.0f'|format(formation.price) }} FCFA maintenant
+          </button>
+        </form>
+        {% endif %}
+
+        {% if chariow_enabled %}
+        <a href="{{ formation.chariow_product_id }}" target="_blank" rel="noopener" class="btn {{ 'btn-outline-success' if paydunya_enabled else 'btn-success' }} w-100 mb-2">
+          Payer {{ '%.0f'|format(formation.price) }} FCFA avec Chariow
+        </a>
+        <p class="text-muted small">
+          Après votre paiement sur Chariow, revenez ici et déclarez-le via « J'ai déjà payé autrement » ci-dessous — votre accès sera débloqué après vérification par notre équipe.
+        </p>
+        {% endif %}
+
+        <details class="mt-3">
+          <summary class="text-muted small" style="cursor:pointer">J'ai déjà payé autrement (virement, etc.)</summary>
+          <div class="mt-2">
+            <div class="alert alert-success py-2 px-3 mb-2 small">
+              💳 <strong>Paiement Wave : envoyez au {{ wave_payment_number }}</strong>
+            </div>
+            <p class="text-muted small">
+              1. Effectuez le paiement de {{ '%.0f'|format(formation.price) }} FCFA via Wave (au numéro ci-dessus), Orange Money, Free Money ou virement.<br>
+              2. Indiquez ci-dessous la méthode utilisée et la référence de la transaction.<br>
+              3. Votre accès sera débloqué après vérification par notre équipe.
+            </p>
+            <form method="POST" action="{{ url_for('inscrire', cid=formation.id) }}">
+              <div class="mb-2">
+                <label class="form-label">Mode de paiement</label>
+                <select name="payment_method" class="form-select" required>
+                  <option value="">— Choisir —</option>
+                  {% for value, label in payment_methods %}
+                    <option value="{{ value }}">{{ label }}</option>
+                  {% endfor %}
+                </select>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Numéro utilisé pour le paiement</label>
+                <input type="text" name="payment_phone" class="form-control" placeholder="ex: 77 123 45 67">
+              </div>
+              <div class="mb-3">
+                <label class="form-label">Référence / n° de transaction</label>
+                <input type="text" name="payment_reference" class="form-control" required>
+              </div>
+              <button type="submit" class="btn btn-outline-success w-100">Confirmer mon inscription</button>
+            </form>
+          </div>
+        </details>
+
+        {% else %}
+        <hr>
+        <h6>S'inscrire et déclarer votre paiement</h6>
+        <div class="alert alert-success py-2 px-3 mb-2 small">
+          💳 <strong>Paiement Wave : envoyez au {{ wave_payment_number }}</strong>
+        </div>
+        <p class="text-muted small">
+          1. Effectuez le paiement de {{ '%.0f'|format(formation.price) }} FCFA via Wave (au numéro ci-dessus), Orange Money, Free Money ou virement.<br>
+          2. Indiquez ci-dessous la méthode utilisée et la référence de la transaction.<br>
+          3. Votre accès sera débloqué après vérification par notre équipe.
+        </p>
+        <form method="POST" action="{{ url_for('inscrire', cid=formation.id) }}">
+          <div class="mb-2">
+            <label class="form-label">Mode de paiement</label>
+            <select name="payment_method" class="form-select" required>
+              <option value="">— Choisir —</option>
+              {% for value, label in payment_methods %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-2">
+            <label class="form-label">Numéro utilisé pour le paiement</label>
+            <input type="text" name="payment_phone" class="form-control" placeholder="ex: 77 123 45 67">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Référence / n° de transaction</label>
+            <input type="text" name="payment_reference" class="form-control" required>
+          </div>
+          <button type="submit" class="btn btn-success w-100">Confirmer mon inscription</button>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,324 @@
+{% extends "base.html" %}
+{% block title %}{{ formation.title }} — Gestion{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>{{ formation.title }}</h3>
+  <a href="{{ url_for('admin_formations') }}" class="btn btn-outline-secondary btn-sm">← Toutes les formations</a>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card p-3 mb-3">
+      <h5>Informations</h5>
+      <form method="POST" action="{{ url_for('admin_modifier_formation', cid=formation.id) }}">
+        <div class="mb-2">
+          <label class="form-label">Titre</label>
+          <input type="text" name="title" class="form-control" value="{{ formation.title }}" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="4">{{ formation.description or '' }}</textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Prix (FCFA)</label>
+          <input type="number" step="any" min="0" name="price" class="form-control" value="{{ formation.price }}" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Image de couverture (lien)</label>
+          <input type="text" name="image_url" class="form-control" value="{{ formation.image_url or '' }}">
+        </div>
+        <div class="form-check mb-3">
+          <input class="form-check-input" type="checkbox" name="published" id="published" {% if formation.published %}checked{% endif %}>
+          <label class="form-check-label" for="published">Formation publiée (visible dans le catalogue)</label>
+        </div>
+        <button type="submit" class="btn btn-success w-100">Enregistrer</button>
+      </form>
+    </div>
+    <form method="POST" action="{{ url_for('admin_supprimer_formation', cid=formation.id) }}" onsubmit="return confirm('Supprimer définitivement cette formation et toutes ses leçons ?');">
+      <button class="btn btn-outline-danger btn-sm w-100">Supprimer cette formation</button>
+    </form>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card p-3 mb-3">
+      <h5>Ajouter une leçon</h5>
+      <form method="POST" enctype="multipart/form-data" id="form-nouvelle-lecon">
+        <div class="mb-2">
+          <label class="form-label">Titre de la leçon</label>
+          <input type="text" name="title" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Texte / instructions (optionnel)</label>
+          <textarea name="content" class="form-control" rows="2"></textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Vidéos de la leçon — optionnel</label>
+          <div class="form-text mb-2">
+            Jusqu'à trois liens, pour publier une leçon longue en plusieurs
+            parties. Laissez le titre vide pour un « Partie 1, 2, 3 »
+            automatique. Une seule vidéo renseignée s'affiche comme avant.
+          </div>
+          {% for i in [1, 2, 3] %}
+            <div class="input-group input-group-sm mb-1">
+              <span class="input-group-text" style="min-width:78px">Vidéo {{ i }}</span>
+              <input type="text" class="form-control"
+                     name="video_url{{ '' if i == 1 else '_' ~ i }}"
+                     placeholder="https://youtu.be/...">
+              <input type="text" class="form-control"
+                     name="video_label{{ '' if i == 1 else '_' ~ i }}"
+                     placeholder="Titre affiché (optionnel)">
+            </div>
+          {% endfor %}
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Vidéos supplémentaires (optionnel) — utile si la formation est découpée en plusieurs fichiers vidéo</label>
+          <div id="videos-extra-nouvelle"></div>
+          <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="ajouterVideoRow('videos-extra-nouvelle')">+ Ajouter une vidéo</button>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Document PDF ou archive ZIP (envoyer un fichier depuis l'ordinateur) — optionnel</label>
+          <input type="file" name="document_file" accept="application/pdf,.zip,application/zip,application/x-zip-compressed" class="form-control">
+          <div class="form-text">PDF pour un support de cours, ou ZIP pour un jeu de données d'exercice (shapefiles) ou un logiciel à installer. Taille max : {{ document_max_size_mo }} Mo.</div>
+        </div>
+        <div class="row">
+          <div class="col-8 mb-2">
+            <label class="form-label">OU lien document (Google Drive...) — optionnel</label>
+            <input type="text" name="document_url" class="form-control" placeholder="https://...">
+          </div>
+          <div class="col-4 mb-2">
+            <label class="form-label">Libellé du document</label>
+            <input type="text" name="document_label" class="form-control" placeholder="Support PDF">
+          </div>
+        </div>
+
+        <hr>
+        <div class="mb-2">
+          <label class="form-label fw-bold">Mode d'évaluation de la leçon</label>
+          <select name="evaluation_mode" id="evaluation_mode" class="form-select" onchange="majModeEvaluation()">
+            <option value="aucune">Aucune évaluation</option>
+            <option value="qcm">📝 QCM (quiz à choix multiples)</option>
+            <option value="devoir">📎 Devoir à rendre (corrigé par le professeur)</option>
+          </select>
+          <div class="form-text">L'étudiant ne pourra accéder à la leçon suivante qu'une fois cette leçon validée (quiz réussi ou devoir corrigé et accepté).</div>
+        </div>
+
+        <div id="bloc-quiz" class="d-none border rounded p-3 mb-2 bg-light">
+          <div class="row g-2 mb-3">
+            <div class="col-8">
+              <label class="form-label">Titre du quiz</label>
+              <input type="text" name="quiz_title" class="form-control form-control-sm" value="Quiz">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Seuil de réussite (%)</label>
+              <input type="number" name="quiz_pass_score" class="form-control form-control-sm" min="0" max="100" value="70">
+            </div>
+          </div>
+
+          <div id="liste-questions"></div>
+
+          <button type="button" class="btn btn-outline-success btn-sm w-100 mt-2" onclick="ajouterQuestion()">+ Ajouter une question</button>
+        </div>
+
+        <div id="bloc-devoir" class="d-none border rounded p-3 mb-2 bg-light">
+          <label class="form-label">Consignes du devoir à rendre</label>
+          <textarea name="devoir_consignes" class="form-control" rows="3" placeholder="Ex : réalisez une carte de la zone d'étude et envoyez le fichier .mxd ou l'export PDF."></textarea>
+        </div>
+
+        <button type="submit" class="btn btn-success w-100 mt-3">Ajouter la leçon</button>
+      </form>
+    </div>
+
+    <template id="template-question">
+      <div class="question-bloc border rounded p-2 mb-2 bg-white">
+        <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+          <input type="text" name="q_text" class="form-control form-control-sm" placeholder="Énoncé de la question">
+          <button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest('.question-bloc').remove()" title="Supprimer cette question">✕</button>
+        </div>
+        <div class="small text-muted mb-1">Choix de réponse (cochez la bonne réponse)</div>
+        __CHOICES__
+      </div>
+    </template>
+
+    <script>
+      let questionIndex = 0;
+
+      function ajouterVideoRow(containerId, label, url) {
+        const container = document.getElementById(containerId);
+        const row = document.createElement('div');
+        row.className = 'row g-2 mb-1 video-extra-row';
+        const labelInput = document.createElement('input');
+        labelInput.type = 'text';
+        labelInput.name = 'video_extra_label';
+        labelInput.className = 'form-control form-control-sm';
+        labelInput.placeholder = 'Ex : Partie 2';
+        labelInput.value = label || '';
+        const urlInput = document.createElement('input');
+        urlInput.type = 'text';
+        urlInput.name = 'video_extra_url';
+        urlInput.className = 'form-control form-control-sm';
+        urlInput.placeholder = 'https://...';
+        urlInput.value = url || '';
+        const colLabel = document.createElement('div');
+        colLabel.className = 'col-4';
+        colLabel.appendChild(labelInput);
+        const colUrl = document.createElement('div');
+        colUrl.className = 'col-7';
+        colUrl.appendChild(urlInput);
+        const colBtn = document.createElement('div');
+        colBtn.className = 'col-1';
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'btn btn-sm btn-outline-danger w-100';
+        btn.title = 'Retirer';
+        btn.textContent = '✕';
+        btn.onclick = function () { row.remove(); };
+        colBtn.appendChild(btn);
+        row.appendChild(colLabel);
+        row.appendChild(colUrl);
+        row.appendChild(colBtn);
+        container.appendChild(row);
+      }
+
+      function choixHtml(qIdx, choiceIdx) {
+        return `<div class="input-group input-group-sm mb-1">
+          <div class="input-group-text">
+            <input class="form-check-input mt-0" type="radio" name="q_correct_display_${qIdx}" value="${choiceIdx}" onclick="document.getElementById('q_correct_${qIdx}').value='${choiceIdx}'">
+          </div>
+          <input type="text" name="q_choice_${choiceIdx}" class="form-control" placeholder="Choix ${choiceIdx + 1}${choiceIdx >= 2 ? ' (optionnel)' : ''}">
+        </div>`;
+      }
+
+      function ajouterQuestion() {
+        const idx = questionIndex++;
+        const wrapper = document.createElement('div');
+        let choicesHtml = '';
+        for (let i = 0; i < 4; i++) {
+          choicesHtml += choixHtml(idx, i);
+        }
+        choicesHtml += `<input type="hidden" name="q_correct" id="q_correct_${idx}" value="">`;
+        wrapper.innerHTML = document.getElementById('template-question').innerHTML.replace('__CHOICES__', choicesHtml);
+        document.getElementById('liste-questions').appendChild(wrapper.firstElementChild);
+      }
+
+      function majModeEvaluation() {
+        const mode = document.getElementById('evaluation_mode').value;
+        document.getElementById('bloc-quiz').classList.toggle('d-none', mode !== 'qcm');
+        document.getElementById('bloc-devoir').classList.toggle('d-none', mode !== 'devoir');
+        if (mode === 'qcm' && document.querySelectorAll('#liste-questions .question-bloc').length === 0) {
+          ajouterQuestion();
+        }
+      }
+
+      document.getElementById('form-nouvelle-lecon').addEventListener('submit', function(e) {
+        if (document.getElementById('evaluation_mode').value === 'qcm') {
+          const questions = document.querySelectorAll('#liste-questions .question-bloc');
+          if (questions.length === 0) {
+            e.preventDefault();
+            alert('Ajoutez au moins une question, ou changez le mode d\'évaluation.');
+            return;
+          }
+          for (const q of questions) {
+            const correct = q.querySelector('input[type=hidden]').value;
+            if (!correct) {
+              e.preventDefault();
+              alert('Merci d\'indiquer la bonne réponse pour chaque question du quiz.');
+              return;
+            }
+          }
+        }
+      });
+    </script>
+
+    <div class="card p-3">
+      <h5>Leçons ({{ lecons|length }})</h5>
+      {% for l in lecons %}
+      <div class="border rounded p-3 mb-2">
+        <form method="POST" action="{{ url_for('admin_modifier_lecon', lid=l.id) }}" enctype="multipart/form-data">
+          <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
+            <input type="text" name="title" value="{{ l.title }}" class="form-control form-control-sm fw-bold">
+            <button class="btn btn-sm btn-outline-success" type="submit" title="Enregistrer">✏️</button>
+            <button class="btn btn-sm btn-outline-danger" type="submit" formaction="{{ url_for('admin_supprimer_lecon', lid=l.id) }}" formnovalidate onclick="return confirm('Supprimer cette leçon ?');" title="Supprimer">✕</button>
+          </div>
+          <div class="mb-2">
+            <label class="form-label small mb-1">Mode d'évaluation</label>
+            <select name="evaluation_mode" class="form-select form-select-sm" onchange="document.getElementById('bloc-devoir-{{ l.id }}').classList.toggle('d-none', this.value !== 'devoir')">
+              <option value="aucune" {% if (l.evaluation_mode or 'aucune') == 'aucune' %}selected{% endif %}>Aucune évaluation</option>
+              <option value="qcm" {% if l.evaluation_mode == 'qcm' %}selected{% endif %}>📝 QCM</option>
+              <option value="devoir" {% if l.evaluation_mode == 'devoir' %}selected{% endif %}>📎 Devoir à rendre</option>
+            </select>
+          </div>
+          <div class="mb-2">
+            <a href="{{ url_for('admin_quiz', lid=l.id) }}" class="btn btn-sm {{ 'btn-outline-success' if l.quiz else 'btn-outline-secondary' }}">
+              {% if l.quiz %}📝 Quiz ({{ l.quiz.questions.count() }} question{{ 's' if l.quiz.questions.count() > 1 else '' }}){% else %}+ Ajouter un quiz{% endif %}
+            </a>
+          </div>
+          <div id="bloc-devoir-{{ l.id }}" class="mb-2 {{ '' if l.evaluation_mode == 'devoir' else 'd-none' }}">
+            <label class="form-label small mb-1">Consignes du devoir</label>
+            <textarea name="devoir_consignes" class="form-control form-control-sm" rows="2" placeholder="Consignes du devoir à rendre">{{ l.devoir_consignes or '' }}</textarea>
+          </div>
+          <textarea name="content" class="form-control form-control-sm mb-2" rows="2" placeholder="Texte / instructions">{{ l.content or '' }}</textarea>
+          <label class="form-label small mb-1">Vidéos (jusqu'à 3 parties)</label>
+          {% set liens = [l.video_url, l.video_url_2, l.video_url_3] %}
+          {% set titres = [l.video_label, l.video_label_2, l.video_label_3] %}
+          {% for i in [1, 2, 3] %}
+            <div class="input-group input-group-sm mb-1">
+              <span class="input-group-text" style="min-width:78px">Vidéo {{ i }}</span>
+              <input type="text" class="form-control"
+                     name="video_url{{ '' if i == 1 else '_' ~ i }}"
+                     value="{{ liens[i - 1] or '' }}"
+                     placeholder="Lien vidéo">
+              <input type="text" class="form-control"
+                     name="video_label{{ '' if i == 1 else '_' ~ i }}"
+                     value="{{ titres[i - 1] or '' }}"
+                     placeholder="Titre (optionnel)">
+            </div>
+          {% endfor %}
+          <div class="mb-2"></div>
+
+          <div class="mb-2">
+            <label class="form-label small mb-1">Vidéos supplémentaires</label>
+            <div id="videos-extra-{{ l.id }}">
+              {% for v in l.videos %}
+              <div class="row g-2 mb-1 video-extra-row">
+                <div class="col-4">
+                  <input type="text" name="video_extra_label" value="{{ v.label or '' }}" class="form-control form-control-sm" placeholder="Ex : Partie 2">
+                </div>
+                <div class="col-7">
+                  <input type="text" name="video_extra_url" value="{{ v.url }}" class="form-control form-control-sm" placeholder="https://...">
+                </div>
+                <div class="col-1">
+                  <button type="button" class="btn btn-sm btn-outline-danger w-100" onclick="this.closest('.video-extra-row').remove()" title="Retirer">✕</button>
+                </div>
+              </div>
+              {% endfor %}
+            </div>
+            <button type="button" class="btn btn-outline-secondary btn-sm mt-1" onclick="ajouterVideoRow('videos-extra-{{ l.id }}')">+ Ajouter une vidéo</button>
+          </div>
+
+          <label class="form-label small mb-1">Document PDF ou archive ZIP</label>
+          {% if l.document_filename %}
+            <div class="d-flex align-items-center gap-2 mb-1 small">
+              <a href="{{ url_for('telecharger_document_lecon', lid=l.id) }}" target="_blank">📄 {{ l.document_filename }}</a>
+              <span class="text-muted">(déjà en ligne)</span>
+              <label class="ms-auto text-danger"><input type="checkbox" name="remove_document"> retirer</label>
+            </div>
+          {% endif %}
+          <input type="file" name="document_file" accept="application/pdf" class="form-control form-control-sm mb-2">
+
+          <div class="row g-2">
+            <div class="col-8">
+              <input type="text" name="document_url" value="{{ l.document_url or '' }}" class="form-control form-control-sm" placeholder="OU lien document">
+            </div>
+            <div class="col-4">
+              <input type="text" name="document_label" value="{{ l.document_label or '' }}" class="form-control form-control-sm" placeholder="Libellé document">
+            </div>
+          </div>
+        </form>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">Aucune leçon pour l'instant.</p>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

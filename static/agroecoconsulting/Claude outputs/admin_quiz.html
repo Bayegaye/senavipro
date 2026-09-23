@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Quiz — {{ lesson.title }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h3>Quiz — {{ lesson.title }}</h3>
+  <a href="{{ url_for('admin_formation_detail', cid=formation.id) }}" class="btn btn-outline-secondary btn-sm">← {{ formation.title }}</a>
+</div>
+
+<div class="row g-3 align-items-start">
+  <div class="col-lg-5">
+    <div class="card card-course p-3 mb-3">
+      <h5>Paramètres du quiz</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Titre du quiz</label>
+          <input type="text" name="title" class="form-control" value="{{ lesson.quiz.title if lesson.quiz else 'Quiz' }}">
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Seuil de réussite (%)</label>
+          <input type="number" min="0" max="100" name="pass_score" class="form-control" value="{{ lesson.quiz.pass_score if lesson.quiz else 70 }}">
+        </div>
+        <button type="submit" class="btn btn-success w-100">
+          {{ 'Enregistrer' if lesson.quiz else 'Créer le quiz' }}
+        </button>
+      </form>
+    </div>
+    {% if lesson.quiz %}
+    <form method="POST" action="{{ url_for('admin_supprimer_quiz', lid=lesson.id) }}" onsubmit="return confirm('Supprimer définitivement ce quiz et toutes ses questions ?');">
+      <button class="btn btn-outline-danger btn-sm w-100">Supprimer ce quiz</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="col-lg-7">
+    {% if lesson.quiz %}
+    <div class="card card-course p-3 mb-3">
+      <h5>Ajouter une question</h5>
+      <form method="POST" action="{{ url_for('admin_ajouter_question', qid=lesson.quiz.id) }}">
+        <div class="mb-2">
+          <label class="form-label">Énoncé de la question</label>
+          <textarea name="text" class="form-control" rows="2" required></textarea>
+        </div>
+        <label class="form-label">Choix de réponse (cochez la bonne réponse)</label>
+        {% for i in range(4) %}
+        <div class="input-group mb-2">
+          <div class="input-group-text">
+            <input class="form-check-input mt-0" type="radio" name="correct_choice" value="{{ i }}" {% if i == 0 %}required{% endif %}>
+          </div>
+          <input type="text" name="choice_text" class="form-control" placeholder="Choix {{ i + 1 }}{% if i >= 2 %} (optionnel){% endif %}">
+        </div>
+        {% endfor %}
+        <button type="submit" class="btn btn-success w-100 mt-2">Ajouter la question</button>
+      </form>
+    </div>
+
+    <div class="card card-course p-3">
+      <h5>Questions ({{ questions|length }})</h5>
+      {% for q in questions %}
+      <div class="border rounded p-3 mb-2">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <p class="fw-bold mb-2">{{ loop.index }}. {{ q.text }}</p>
+          <form method="POST" action="{{ url_for('admin_supprimer_question', qid=q.id) }}" onsubmit="return confirm('Supprimer cette question ?');">
+            <button class="btn btn-sm btn-outline-danger" title="Supprimer">✕</button>
+          </form>
+        </div>
+        <ul class="list-group list-group-flush">
+          {% for c in q.choices %}
+          <li class="list-group-item {% if c.is_correct %}text-success fw-bold{% endif %}">
+            {% if c.is_correct %}✔{% else %}○{% endif %} {{ c.text }}
+          </li>
+          {% endfor %}
+        </ul>
+      </div>
+      {% else %}
+      <p class="text-muted mb-0">Aucune question pour l'instant.</p>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="alert alert-info">Créez d'abord le quiz (paramètres à gauche) pour pouvoir ajouter des questions.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

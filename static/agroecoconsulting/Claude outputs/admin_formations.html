@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}Gérer les formations{% endblock %}
+{% block content %}
+<h3 class="mb-4">Gérer les formations</h3>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card card-course p-3">
+      <h5>Nouvelle formation</h5>
+      <form method="POST">
+        <div class="mb-2">
+          <label class="form-label">Titre</label>
+          <input type="text" name="title" class="form-control" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Description</label>
+          <textarea name="description" class="form-control" rows="3"></textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Prix (FCFA)</label>
+          <input type="number" step="any" min="0" name="price" class="form-control" value="0" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Image de couverture (lien, optionnel)</label>
+          <input type="text" name="image_url" class="form-control" placeholder="https://...">
+        </div>
+        <button type="submit" class="btn btn-success w-100">Créer la formation</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card card-course p-3">
+      <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead><tr><th>Titre</th><th>Prix</th><th>Leçons</th><th>Inscrits</th><th>Publiée</th><th>Fin</th><th></th></tr></thead>
+        <tbody>
+        {% for c in liste %}
+          <tr>
+            <td>{{ c.title }}</td>
+            <td>{{ '%.0f'|format(c.price) }} FCFA</td>
+            <td>{{ c.lessons.count() }}</td>
+            <td>{{ c.enrollments.filter_by(status='validee').count() }}</td>
+            <td>{% if c.published %}<span class="badge bg-success">Oui</span>{% else %}<span class="badge bg-secondary">Non</span>{% endif %}</td>
+            <td>
+              {% if c.date_fin %}
+                <span class="badge {{ 'bg-secondary' if now.date() > c.date_fin else 'bg-info text-dark' }}" title="{{ 'Formation terminée' if now.date() > c.date_fin else 'Accès jusqu\'à cette date' }}">
+                  {{ c.date_fin.strftime('%d/%m/%Y') }}
+                </span>
+              {% else %}
+                <span class="text-muted small">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ url_for('admin_formation_detail', cid=c.id) }}" class="btn btn-sm btn-outline-success">Gérer</a>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted">Aucune formation. Créez-en une à gauche.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
