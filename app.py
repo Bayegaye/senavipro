@@ -287,6 +287,11 @@ def contact_public():
     return render_template("public_contact.html")
 
 
+@app.route("/politique-de-confidentialite")
+def confidentialite_public():
+    return render_template("public_confidentialite.html")
+
+
 def _paliers_livraison():
     return DeliveryTier.query.order_by(DeliveryTier.quantite_min).all()
 

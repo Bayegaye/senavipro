@@ -1,0 +1,21 @@
+# --- Secrets : ne jamais versionner ---
+android.keystore
+*.keystore
+.env
+
+# --- Build Android / Gradle / Bubblewrap : régénérés à chaque build ---
+build/
+.gradle/
+app/build/
+*.apk
+*.apk.idsig
+*.aab
+hs_err_pid*.log
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.db
+
+# --- Divers ---
+.DS_Store
