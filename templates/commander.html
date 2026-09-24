@@ -11,6 +11,10 @@
     box-shadow: 0 -4px 18px rgba(43,33,24,.12); border-top: 1px solid #f0e6d8;
   }
   .sp-product-row.is-in-cart { background: var(--sp-orange-soft); }
+  .sp-product-thumb {
+    width: 3rem; height: 3rem; object-fit: cover; border-radius: .6rem;
+    flex-shrink: 0; background: var(--sp-orange-soft);
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -47,13 +51,21 @@
               {% for p in produits %}
               <tr class="sp-product-row" data-product-id="{{ p.id }}" data-price="{{ p.prix_vente_defaut }}">
                 <td>
-                  <div class="fw-semibold">{{ p.name }}</div>
-                  <div class="small text-muted">
-                    {{ '%.0f'|format(p.prix_vente_defaut) }} FCFA / {{ p.unit }}
-                    {% set dispo = disponibilites.get(p.id, 0) %}
-                    {% if dispo <= 0 %}
-                      <span class="text-warning">· rupture de stock (commande possible, livrée dès réapprovisionnement)</span>
+                  <div class="d-flex align-items-center gap-2">
+                    {% set img = images_produits.get(p.id) %}
+                    {% if img %}
+                      <img src="{{ img }}" alt="{{ p.name }}" class="sp-product-thumb">
                     {% endif %}
+                    <div>
+                      <div class="fw-semibold">{{ p.name }}</div>
+                      <div class="small text-muted">
+                        {{ '%.0f'|format(p.prix_vente_defaut) }} FCFA / {{ p.unit }}
+                        {% set dispo = disponibilites.get(p.id, 0) %}
+                        {% if dispo <= 0 %}
+                          <span class="text-warning">· rupture de stock (commande possible, livrée dès réapprovisionnement)</span>
+                        {% endif %}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td class="text-end">{{ '%.0f'|format(p.prix_vente_defaut) }}</td>

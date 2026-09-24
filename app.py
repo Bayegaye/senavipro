@@ -17,6 +17,31 @@ from models import db, User, Partner, Product, Transaction, Expense, Sale, Order
 
 APP_NAME = "SENAVIPRO"
 
+# Images illustrant chaque produit sur la page de commande en ligne
+# (/commander). La correspondance se fait par le début du nom du produit
+# (insensible à la casse) : par exemple "Oeufs de table - Gros calibre"
+# correspond à la clé "oeufs de table". Un produit dont le nom ne correspond
+# à aucune clé ci-dessous s'affiche simplement sans image.
+PRODUCT_IMAGES = {
+    "oeufs de table": "img/products/oeufs_table.jpg",
+    "poulets de chair": "img/products/poulets_chair.jpg",
+    "bissap": "img/products/bissap.jpg",
+    "bouye": "img/products/bouye.jpg",
+    "gingembre": "img/products/gingembre.jpg",
+    "niebe": "img/products/niebe.jpg",
+    "niébé": "img/products/niebe.jpg",
+}
+
+
+def _product_image(product_name):
+    """Retourne l'URL statique de l'image correspondant à un produit, ou None
+    si aucune image n'est disponible pour ce produit."""
+    name_lower = product_name.strip().lower()
+    for key, path in PRODUCT_IMAGES.items():
+        if name_lower.startswith(key):
+            return url_for("static", filename=path)
+    return None
+
 # Coordonnées de l'entreprise affichées sur les factures et sur le site public.
 COMPANY_INFO = {
     "rccm": "RCCM N° 2025M076",
@@ -382,11 +407,22 @@ def commander():
     Livraisons de la plateforme interne pour que l'équipe organise la
     livraison — comme pour les commandes internes (page Commandes), aucun
     stock n'est débité tant que la commande n'est pas confirmée."""
-    produits = (
-        Product.query.filter(Product.prix_vente_defaut > 0)
-        .order_by(Product.name)
-        .all()
-    )
+    # Catégories d'œufs autorisées à la commande en ligne : si un ancien
+    # produit "Oeufs de table" générique (sans calibre) traîne encore en
+    # base, il est exclu ici sans toucher à son historique de ventes.
+    CALIBRES_OEUFS_AUTORISES = {
+        "Oeufs de table - Petit calibre",
+        "Oeufs de table - Moyen calibre",
+        "Oeufs de table - Gros calibre",
+    }
+    produits = [
+        p for p in (
+            Product.query.filter(Product.prix_vente_defaut > 0)
+            .order_by(Product.name)
+            .all()
+        )
+        if not p.name.lower().startswith("oeufs de table") or p.name in CALIBRES_OEUFS_AUTORISES
+    ]
 
     if request.method == "POST":
         client_name = request.form.get("client_name", "").strip()
@@ -464,10 +500,12 @@ def commander():
         return redirect(url_for("commande_confirmation", gid=og.id))
 
     disponibilites = {p.id: _stock_disponible(p) for p in produits}
+    images_produits = {p.id: _product_image(p.name) for p in produits}
     return render_template(
         "commander.html",
         produits=produits,
         disponibilites=disponibilites,
+        images_produits=images_produits,
         paliers=_paliers_livraison(),
     )
 
