@@ -13,7 +13,7 @@ from flask_login import (
 )
 from sqlalchemy import func
 
-from models import db, User, Partner, Product, Transaction, Expense
+from models import db, User, Partner, Product, Transaction, Expense, SupplierPayment, CapitalSettings
 
 APP_NAME = "SENAVIPRO"
 
@@ -654,6 +654,171 @@ def export_depenses_csv():
         mimetype="text/csv",
         headers={"Content-Disposition": f"attachment;filename=senavipro_depenses_{date_debut}_{date_fin}.csv"},
     )
+
+
+# ---------- Capital de l'entreprise (situation financière en temps réel) ----------
+#
+# Principe (validé avec l'utilisateur) :
+#   Situation financière totale = valeur du stock
+#                                + argent disponible chez les fournisseurs
+#                                + argent liquide en caisse
+#
+#   - Valeur du stock = somme, pour chaque produit, de (stock actuel x prix
+#     d'achat par défaut). On valorise au prix d'achat (coût), pas au prix de
+#     vente, pour ne pas compter un bénéfice non réalisé dans le capital.
+#
+#   - Argent disponible chez un fournisseur = somme des versements
+#     (SupplierPayment) faits à ce fournisseur - valeur des marchandises déjà
+#     reçues de lui (somme des Transaction de type "achat" liées à ce
+#     partenaire). C'est le solde d'avance qu'il reste à "consommer" en
+#     marchandises chez ce fournisseur.
+#
+#   - Argent liquide en caisse = solde de caisse initial (réglable par
+#     l'administrateur, représente la caisse au moment où ce suivi démarre)
+#     + total des ventes - total des dépenses générales - total des
+#     versements faits aux fournisseurs. On soustrait les versements aux
+#     fournisseurs de la caisse car cet argent a quitté la caisse pour
+#     devenir un solde d'avance chez le fournisseur (sinon le même argent
+#     serait compté deux fois dans le total). N'hésitez pas à me signaler si
+#     votre comptabilité fonctionne différemment (par ex. si les versements
+#     aux fournisseurs sont déjà comptés ailleurs).
+
+def _get_capital_settings():
+    settings = CapitalSettings.query.first()
+    if not settings:
+        settings = CapitalSettings(solde_caisse_initial=0)
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
+
+@app.route("/capital")
+@login_required
+def capital():
+    produits = Product.query.order_by(Product.name).all()
+    stock_detail = [
+        {"produit": p, "valeur": (p.stock or 0) * (p.prix_achat_defaut or 0)}
+        for p in produits
+    ]
+    valeur_stock = sum(item["valeur"] for item in stock_detail)
+
+    fournisseurs = Partner.query.filter_by(type="fournisseur").order_by(Partner.name).all()
+    fournisseurs_detail = []
+    total_verse = 0.0
+    total_recu = 0.0
+    for f in fournisseurs:
+        verse = db.session.query(func.coalesce(func.sum(SupplierPayment.amount), 0.0)).filter(
+            SupplierPayment.partner_id == f.id
+        ).scalar()
+        recu = db.session.query(func.coalesce(func.sum(Transaction.total), 0.0)).filter(
+            Transaction.partner_id == f.id, Transaction.type == "achat"
+        ).scalar()
+        fournisseurs_detail.append({
+            "fournisseur": f, "verse": verse, "recu": recu, "solde": verse - recu,
+        })
+        total_verse += verse
+        total_recu += recu
+
+    argent_disponible_fournisseurs = total_verse - total_recu
+
+    settings = _get_capital_settings()
+    total_ventes = db.session.query(func.coalesce(func.sum(Transaction.total), 0.0)).filter(
+        Transaction.type == "vente"
+    ).scalar()
+    total_depenses = db.session.query(func.coalesce(func.sum(Expense.amount), 0.0)).scalar()
+    total_versements = total_verse
+
+    argent_liquide = (
+        settings.solde_caisse_initial + total_ventes - total_depenses - total_versements
+    )
+
+    situation_financiere = valeur_stock + argent_disponible_fournisseurs + argent_liquide
+
+    versements_recents = (
+        SupplierPayment.query.order_by(
+            SupplierPayment.date.desc(), SupplierPayment.created_at.desc()
+        ).limit(20).all()
+    )
+
+    return render_template(
+        "capital.html",
+        stock_detail=stock_detail,
+        valeur_stock=valeur_stock,
+        fournisseurs=fournisseurs,
+        fournisseurs_detail=fournisseurs_detail,
+        argent_disponible_fournisseurs=argent_disponible_fournisseurs,
+        settings=settings,
+        total_ventes=total_ventes,
+        total_depenses=total_depenses,
+        total_versements=total_versements,
+        argent_liquide=argent_liquide,
+        situation_financiere=situation_financiere,
+        versements_recents=versements_recents,
+        today=date.today().isoformat(),
+    )
+
+
+@app.route("/capital/solde-initial", methods=["POST"])
+@login_required
+@admin_required
+def maj_solde_initial():
+    try:
+        montant = float(request.form["solde_caisse_initial"])
+    except (KeyError, ValueError):
+        flash("Montant invalide.", "danger")
+        return redirect(url_for("capital"))
+    settings = _get_capital_settings()
+    settings.solde_caisse_initial = montant
+    db.session.commit()
+    flash("Solde de caisse initial mis à jour.", "success")
+    return redirect(url_for("capital"))
+
+
+@app.route("/capital/versement", methods=["POST"])
+@login_required
+@admin_required
+def ajouter_versement():
+    try:
+        partner_id = int(request.form["partner_id"])
+        amount = float(request.form["amount"])
+        vdate = request.form.get("date") or date.today().isoformat()
+        note = request.form.get("note", "").strip()
+    except (KeyError, ValueError):
+        flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
+        return redirect(url_for("capital"))
+
+    if amount <= 0:
+        flash("Le montant du versement doit être positif.", "danger")
+        return redirect(url_for("capital"))
+
+    partner = db.session.get(Partner, partner_id)
+    if not partner or partner.type != "fournisseur":
+        flash("Fournisseur introuvable.", "danger")
+        return redirect(url_for("capital"))
+
+    versement = SupplierPayment(
+        partner_id=partner.id,
+        amount=amount,
+        date=datetime.strptime(vdate, "%Y-%m-%d").date(),
+        note=note,
+        user_id=current_user.id,
+    )
+    db.session.add(versement)
+    db.session.commit()
+    flash(f"Versement de {amount:.0f} FCFA enregistré pour {partner.name}.", "success")
+    return redirect(url_for("capital"))
+
+
+@app.route("/capital/versement/<int:vid>/supprimer", methods=["POST"])
+@login_required
+@admin_required
+def supprimer_versement(vid):
+    v = db.session.get(SupplierPayment, vid)
+    if v:
+        db.session.delete(v)
+        db.session.commit()
+        flash("Versement supprimé.", "info")
+    return redirect(url_for("capital"))
 
 
 # ---------- Utilisateurs (admin) ----------

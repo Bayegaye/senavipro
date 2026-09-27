@@ -72,6 +72,44 @@ class Expense(db.Model):
     user = db.relationship("User")
 
 
+class SupplierPayment(db.Model):
+    """Versement (avance) remis à un fournisseur, indépendamment de toute
+    livraison précise de marchandise.
+
+    Le solde encore disponible chez un fournisseur donné se calcule comme :
+        somme des versements (SupplierPayment) - valeur des marchandises déjà
+        reçues de ce fournisseur (somme des Transaction de type "achat" liées
+        à ce partenaire).
+    """
+    __tablename__ = "supplier_payments"
+    id = db.Column(db.Integer, primary_key=True)
+    partner_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=False)
+    amount = db.Column(db.Float, nullable=False)
+    date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
+    note = db.Column(db.String(256))
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    partner = db.relationship("Partner", backref=db.backref("payments", lazy="dynamic"))
+    user = db.relationship("User")
+
+
+class CapitalSettings(db.Model):
+    """Réglage unique (une seule ligne) pour le suivi du capital de l'entreprise :
+    le solde de caisse (argent liquide) au moment où le suivi a démarré, avant
+    toute vente/dépense déjà enregistrée dans l'application.
+
+    Situation financière totale en temps réel =
+        valeur du stock (quantité x prix d'achat)
+        + argent disponible chez les fournisseurs (versements - marchandises reçues)
+        + argent liquide en caisse (solde initial + ventes - dépenses - versements aux fournisseurs)
+    """
+    __tablename__ = "capital_settings"
+    id = db.Column(db.Integer, primary_key=True)
+    solde_caisse_initial = db.Column(db.Float, nullable=False, default=0)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Transaction(db.Model):
     __tablename__ = "transactions"
     id = db.Column(db.Integer, primary_key=True)

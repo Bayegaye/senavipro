@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Capital{% endblock %}
+{% block content %}
+<h3 class="mb-4">Situation financière de l'entreprise</h3>
+
+<div class="card card-stat p-4 mb-4" style="background:#1e5631;">
+  <div class="text-center">
+    <div class="text-uppercase small" style="color:#c7e6d1;letter-spacing:.5px;">Capital total de l'entreprise (temps réel)</div>
+    <div class="display-6 fw-bold text-white">{{ '{:,.0f}'.format(situation_financiere).replace(',', ' ') }} FCFA</div>
+    <div class="small mt-1" style="color:#c7e6d1;">
+      Valeur du stock + argent disponible chez les fournisseurs + argent liquide en caisse
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="card card-stat p-3 h-100">
+      <div class="text-muted small">Valeur du stock (au prix d'achat)</div>
+      <div class="stat-value text-success">{{ '{:,.0f}'.format(valeur_stock).replace(',', ' ') }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-stat p-3 h-100">
+      <div class="text-muted small">Argent disponible chez les fournisseurs</div>
+      <div class="stat-value text-primary">{{ '{:,.0f}'.format(argent_disponible_fournisseurs).replace(',', ' ') }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="card card-stat p-3 h-100">
+      <div class="text-muted small">Argent liquide en caisse</div>
+      <div class="stat-value {% if argent_liquide >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '{:,.0f}'.format(argent_liquide).replace(',', ' ') }} FCFA</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- ---------- Valeur du stock : détail ---------- -->
+  <div class="col-lg-6">
+    <div class="card card-stat p-3 h-100">
+      <h5>Détail du stock</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Produit</th><th>Stock</th><th>Prix d'achat</th><th>Valeur</th></tr></thead>
+          <tbody>
+          {% for item in stock_detail %}
+            <tr>
+              <td>{{ item.produit.name }}</td>
+              <td>{{ '%.0f'|format(item.produit.stock) }} {{ item.produit.unit }}</td>
+              <td>{{ '%.0f'|format(item.produit.prix_achat_defaut) }} FCFA</td>
+              <td>{{ '{:,.0f}'.format(item.valeur).replace(',', ' ') }} FCFA</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-muted">Aucun produit.</td></tr>
+          {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold"><td colspan="3">Total</td><td>{{ '{:,.0f}'.format(valeur_stock).replace(',', ' ') }} FCFA</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="text-muted small mb-0 mt-2">Le stock est valorisé au prix d'achat (coût), pas au prix de vente, pour ne pas compter un bénéfice non encore réalisé dans le capital.</p>
+    </div>
+  </div>
+
+  <!-- ---------- Argent liquide : détail du calcul ---------- -->
+  <div class="col-lg-6">
+    <div class="card card-stat p-3 h-100">
+      <h5>Détail de l'argent liquide en caisse</h5>
+      <table class="table table-sm mb-0">
+        <tbody>
+          <tr><td>Solde de caisse initial</td><td class="text-end">{{ '{:,.0f}'.format(settings.solde_caisse_initial).replace(',', ' ') }} FCFA</td></tr>
+          <tr><td>+ Total des ventes (depuis le début)</td><td class="text-end text-success">+{{ '{:,.0f}'.format(total_ventes).replace(',', ' ') }} FCFA</td></tr>
+          <tr><td>- Total des dépenses générales</td><td class="text-end text-danger">-{{ '{:,.0f}'.format(total_depenses).replace(',', ' ') }} FCFA</td></tr>
+          <tr><td>- Total des versements aux fournisseurs</td><td class="text-end text-danger">-{{ '{:,.0f}'.format(total_versements).replace(',', ' ') }} FCFA</td></tr>
+          <tr class="fw-bold border-top"><td>= Argent liquide en caisse</td><td class="text-end">{{ '{:,.0f}'.format(argent_liquide).replace(',', ' ') }} FCFA</td></tr>
+        </tbody>
+      </table>
+      {% if current_user.is_admin %}
+      <hr>
+      <form method="POST" action="{{ url_for('maj_solde_initial') }}" class="d-flex gap-2 align-items-end">
+        <div class="flex-grow-1">
+          <label class="form-label small mb-1">Modifier le solde de caisse initial</label>
+          <input type="number" step="any" name="solde_caisse_initial" class="form-control form-control-sm" value="{{ settings.solde_caisse_initial }}" required>
+        </div>
+        <button class="btn btn-sm btn-outline-success">Enregistrer</button>
+      </form>
+      <p class="text-muted small mb-0 mt-2">Le solde initial représente l'argent liquide en caisse au moment où vous commencez ce suivi (avant les ventes/dépenses déjà enregistrées dans l'application).</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mt-1">
+  <!-- ---------- Fournisseurs : versements et soldes ---------- -->
+  <div class="col-lg-7">
+    <div class="card card-stat p-3 h-100">
+      <h5>Solde disponible par fournisseur</h5>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Fournisseur</th><th>Versé</th><th>Marchandises reçues</th><th>Solde disponible</th></tr></thead>
+          <tbody>
+          {% for item in fournisseurs_detail %}
+            <tr>
+              <td>{{ item.fournisseur.name }}</td>
+              <td>{{ '{:,.0f}'.format(item.verse).replace(',', ' ') }} FCFA</td>
+              <td>{{ '{:,.0f}'.format(item.recu).replace(',', ' ') }} FCFA</td>
+              <td class="fw-bold {% if item.solde >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '{:,.0f}'.format(item.solde).replace(',', ' ') }} FCFA</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-muted">Aucun fournisseur enregistré.</td></tr>
+          {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr class="fw-bold"><td colspan="3">Total</td><td>{{ '{:,.0f}'.format(argent_disponible_fournisseurs).replace(',', ' ') }} FCFA</td></tr>
+          </tfoot>
+        </table>
+      </div>
+      <p class="text-muted small mb-0 mt-2">« Marchandises reçues » = somme des achats déjà enregistrés pour ce fournisseur (menu Achats). Le solde disponible correspond à l'avance qu'il reste à consommer chez lui.</p>
+    </div>
+  </div>
+
+  <!-- ---------- Nouveau versement ---------- -->
+  {% if current_user.is_admin %}
+  <div class="col-lg-5">
+    <div class="card card-stat p-3 h-100">
+      <h5>Enregistrer un versement à un fournisseur</h5>
+      <form method="POST" action="{{ url_for('ajouter_versement') }}">
+        <div class="mb-2">
+          <label class="form-label">Fournisseur</label>
+          <select name="partner_id" class="form-select" required>
+            <option value="" disabled selected>Choisir…</option>
+            {% for f in fournisseurs %}
+            <option value="{{ f.id }}">{{ f.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="row g-2">
+          <div class="col-6">
+            <label class="form-label">Montant (FCFA)</label>
+            <input type="number" step="any" min="0" name="amount" class="form-control" required>
+          </div>
+          <div class="col-6">
+            <label class="form-label">Date</label>
+            <input type="date" name="date" class="form-control" value="{{ today }}">
+          </div>
+        </div>
+        <div class="mb-2 mt-2">
+          <label class="form-label">Note (optionnelle)</label>
+          <input type="text" name="note" class="form-control">
+        </div>
+        <button type="submit" class="btn btn-success w-100">Enregistrer le versement</button>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="row g-3 mt-1">
+  <div class="col-12">
+    <div class="card card-stat p-3">
+      <h5>Derniers versements aux fournisseurs</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-hover align-middle mb-0">
+          <thead><tr><th>Date</th><th>Fournisseur</th><th>Montant</th><th>Note</th><th>Enregistré par</th>{% if current_user.is_admin %}<th></th>{% endif %}</tr></thead>
+          <tbody>
+          {% for v in versements_recents %}
+            <tr>
+              <td>{{ v.date.strftime('%d/%m/%Y') }}</td>
+              <td>{{ v.partner.name }}</td>
+              <td>{{ '{:,.0f}'.format(v.amount).replace(',', ' ') }} FCFA</td>
+              <td>{{ v.note or '—' }}</td>
+              <td>{{ v.user.full_name if v.user else '—' }}</td>
+              {% if current_user.is_admin %}
+              <td>
+                <form method="POST" action="{{ url_for('supprimer_versement', vid=v.id) }}" onsubmit="return confirm('Supprimer ce versement ?');">
+                  <button class="btn btn-sm btn-outline-danger">✕</button>
+                </form>
+              </td>
+              {% endif %}
+            </tr>
+          {% else %}
+            <tr><td colspan="6" class="text-muted">Aucun versement enregistré pour le moment.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
