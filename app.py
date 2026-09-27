@@ -87,6 +87,16 @@ def _parse_date(value, default=None):
         return default
 
 
+def _parse_decimal(value):
+    """Convertit une chaîne saisie par l'utilisateur en nombre flottant, en
+    acceptant aussi bien le point que la virgule comme séparateur décimal.
+    Nécessaire car le clavier numérique de nombreux téléphones/tablettes en
+    français insère une virgule par défaut, ce que le simple float() de
+    Python refuse (ValueError) — ce qui bloquait silencieusement la création
+    ou la modification des ventes, achats, dépenses, etc. depuis mobile."""
+    return float(str(value).strip().replace(",", "."))
+
+
 IS_PRODUCTION = os.environ.get("DATABASE_URL") is not None
 
 app = Flask(__name__)
@@ -782,8 +792,8 @@ def _list_transactions(type_):
 def _create_transaction(type_):
     try:
         product_id = int(request.form["product_id"])
-        quantity = float(request.form["quantity"])
-        unit_price = float(request.form["unit_price"])
+        quantity = _parse_decimal(request.form["quantity"])
+        unit_price = _parse_decimal(request.form["unit_price"])
         partner_id = request.form.get("partner_id") or None
         tdate = request.form.get("date") or date.today().isoformat()
         note = request.form.get("note", "").strip()
@@ -980,8 +990,8 @@ def modifier_transaction(tid):
 
     try:
         product_id = int(request.form["product_id"])
-        quantity = float(request.form["quantity"])
-        unit_price = float(request.form["unit_price"])
+        quantity = _parse_decimal(request.form["quantity"])
+        unit_price = _parse_decimal(request.form["unit_price"])
         partner_id = request.form.get("partner_id") or None
         tdate = request.form.get("date") or tr.date.isoformat()
         note = request.form.get("note", "").strip()
@@ -1226,8 +1236,8 @@ def commandes():
     if request.method == "POST":
         try:
             product_id = int(request.form["product_id"])
-            quantity = float(request.form["quantity"])
-            unit_price = float(request.form["unit_price"])
+            quantity = _parse_decimal(request.form["quantity"])
+            unit_price = _parse_decimal(request.form["unit_price"])
             cdate = request.form.get("date") or date.today().isoformat()
             note = request.form.get("note", "").strip()
         except (KeyError, ValueError):
@@ -1395,8 +1405,8 @@ def modifier_commande(oid):
 
     try:
         product_id = int(request.form["product_id"])
-        quantity = float(request.form["quantity"])
-        unit_price = float(request.form["unit_price"])
+        quantity = _parse_decimal(request.form["quantity"])
+        unit_price = _parse_decimal(request.form["unit_price"])
         cdate = request.form.get("date") or o.date.isoformat()
         note = request.form.get("note", "").strip()
     except (KeyError, ValueError):
@@ -1626,10 +1636,10 @@ def tarifs_livraison():
     page publique /commander, selon la quantité totale du panier."""
     if request.method == "POST":
         try:
-            quantite_min = float(request.form["quantite_min"])
+            quantite_min = _parse_decimal(request.form["quantite_min"])
             quantite_max_raw = request.form.get("quantite_max", "").strip()
             quantite_max = float(quantite_max_raw) if quantite_max_raw else None
-            prix = float(request.form["prix"])
+            prix = _parse_decimal(request.form["prix"])
         except (KeyError, ValueError):
             flash("Valeurs invalides.", "danger")
             return redirect(url_for("tarifs_livraison"))
@@ -1654,10 +1664,10 @@ def modifier_tarif_livraison(tid):
     if not tier:
         abort(404)
     try:
-        quantite_min = float(request.form["quantite_min"])
+        quantite_min = _parse_decimal(request.form["quantite_min"])
         quantite_max_raw = request.form.get("quantite_max", "").strip()
         quantite_max = float(quantite_max_raw) if quantite_max_raw else None
-        prix = float(request.form["prix"])
+        prix = _parse_decimal(request.form["prix"])
     except (KeyError, ValueError):
         flash("Valeurs invalides.", "danger")
         return redirect(url_for("tarifs_livraison"))
@@ -1784,7 +1794,7 @@ def depenses():
         description = request.form.get("description", "").strip()
         edate = request.form.get("date") or date.today().isoformat()
         try:
-            amount = float(request.form["amount"])
+            amount = _parse_decimal(request.form["amount"])
         except (KeyError, ValueError):
             flash("Montant invalide.", "danger")
             return redirect(url_for("depenses"))
@@ -1847,7 +1857,7 @@ def modifier_depense(eid):
     description = request.form.get("description", "").strip()
     edate = request.form.get("date") or e.date.isoformat()
     try:
-        amount = float(request.form["amount"])
+        amount = _parse_decimal(request.form["amount"])
     except (KeyError, ValueError):
         flash("Montant invalide.", "danger")
         return redirect(url_for("depenses"))
@@ -1881,7 +1891,7 @@ def pertes():
     if request.method == "POST":
         try:
             product_id = int(request.form["product_id"])
-            quantity = float(request.form["quantity"])
+            quantity = _parse_decimal(request.form["quantity"])
         except (KeyError, ValueError):
             flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
             return redirect(url_for("pertes"))
@@ -1975,7 +1985,7 @@ def modifier_perte(lid):
 
     try:
         product_id = int(request.form["product_id"])
-        quantity = float(request.form["quantity"])
+        quantity = _parse_decimal(request.form["quantity"])
     except (KeyError, ValueError):
         flash("Formulaire invalide. Vérifiez les champs saisis.", "danger")
         return redirect(url_for("pertes"))
@@ -2036,7 +2046,7 @@ def stock():
             return redirect(url_for("stock"))
         try:
             product_id = int(request.form["product_id"])
-            nouveau_stock = float(request.form["nouveau_stock"])
+            nouveau_stock = _parse_decimal(request.form["nouveau_stock"])
             seuil_alerte = float(request.form.get("seuil_alerte", 0))
         except (KeyError, ValueError):
             flash("Formulaire invalide.", "danger")
@@ -2409,7 +2419,7 @@ def capital():
 @admin_required
 def maj_solde_initial():
     try:
-        montant = float(request.form["solde_caisse_initial"])
+        montant = _parse_decimal(request.form["solde_caisse_initial"])
     except (KeyError, ValueError):
         flash("Montant invalide.", "danger")
         return redirect(url_for("capital"))
@@ -2426,7 +2436,7 @@ def maj_solde_initial():
 def ajouter_versement():
     try:
         partner_id = int(request.form["partner_id"])
-        amount = float(request.form["amount"])
+        amount = _parse_decimal(request.form["amount"])
         vdate = request.form.get("date") or date.today().isoformat()
         note = request.form.get("note", "").strip()
     except (KeyError, ValueError):
