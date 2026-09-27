@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Tarifs de livraison{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h3 class="mb-0">Tarifs de livraison</h3>
+  <a href="{{ url_for('livraisons') }}" class="btn btn-outline-secondary btn-sm">← Livraisons</a>
+</div>
+<p class="text-muted">Ces paliers déterminent le prix de livraison affiché aux clients sur la page de commande en ligne (/commander), selon la quantité totale de leur panier (tous produits confondus).</p>
+
+<div class="row g-3">
+  <div class="col-lg-5">
+    <div class="card card-stat p-3">
+      <h5>Ajouter un palier</h5>
+      <form method="POST" action="{{ url_for('tarifs_livraison') }}">
+        <div class="row">
+          <div class="col-6 mb-2">
+            <label class="form-label">Quantité min</label>
+            <input type="number" step="any" min="1" name="quantite_min" class="form-control" required>
+          </div>
+          <div class="col-6 mb-2">
+            <label class="form-label">Quantité max (vide = illimité)</label>
+            <input type="number" step="any" min="1" name="quantite_max" class="form-control">
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Prix de livraison (FCFA)</label>
+          <input type="number" step="any" min="0" name="prix" class="form-control" required>
+        </div>
+        <button type="submit" class="btn btn-success w-100">Ajouter le palier</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-lg-7">
+    <div class="card card-stat p-3">
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead><tr><th>Quantité min</th><th>Quantité max</th><th>Prix (FCFA)</th><th></th></tr></thead>
+          <tbody>
+          {% for t in liste %}
+            <tr>
+              <td><input type="number" step="any" name="quantite_min" value="{{ t.quantite_min }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
+              <td><input type="number" step="any" name="quantite_max" value="{{ t.quantite_max if t.quantite_max is not none else '' }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px" placeholder="illimité"></td>
+              <td><input type="number" step="any" name="prix" value="{{ t.prix }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
+              <td class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ t.id }}">Enregistrer</button>
+                <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ t.id }}">✕</button>
+              </td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-muted">Aucun palier défini — le prix de livraison sera de 0 FCFA tant qu'aucun palier n'existe.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% for t in liste %}
+<form id="edit-{{ t.id }}" method="POST" action="{{ url_for('modifier_tarif_livraison', tid=t.id) }}"></form>
+<form id="del-{{ t.id }}" method="POST" action="{{ url_for('supprimer_tarif_livraison', tid=t.id) }}" onsubmit="return confirm('Supprimer ce palier ?');"></form>
+{% endfor %}
+{% endblock %}

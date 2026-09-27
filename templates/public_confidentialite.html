@@ -1,0 +1,76 @@
+{% extends "public_base.html" %}
+{% block title %}Politique de confidentialité{% endblock %}
+{% block content %}
+
+<section class="sp-section pb-3" style="background: var(--sp-orange-soft);">
+  <div class="container text-center">
+    <div class="sp-eyebrow mb-2">Confidentialité</div>
+    <h1 class="fw-bold mb-2">Politique de confidentialité</h1>
+    <p class="mb-0" style="color:#5a4c3d;">Dernière mise à jour : {{ now.strftime('%d/%m/%Y') }}</p>
+  </div>
+</section>
+
+<section class="sp-section">
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-9">
+
+        <div class="sp-card p-4 p-md-5">
+
+          <p>Senavi Pro ("nous") exploite le site et l'application <strong>Senavi Livraison</strong>
+          accessibles à l'adresse www.senavipros.com. Cette page explique quelles informations nous collectons lorsque vous
+          utilisez le site ou l'application pour passer une commande, et comment nous les utilisons.</p>
+
+          <h5 class="fw-bold mt-4">Informations que nous collectons</h5>
+          <p>Lorsque vous passez une commande depuis la page "Commander", nous vous demandons :</p>
+          <ul>
+            <li>votre nom ;</li>
+            <li>votre numéro de téléphone ;</li>
+            <li>votre adresse de livraison ;</li>
+            <li>le détail des produits et quantités commandés, ainsi qu'une note facultative.</li>
+          </ul>
+          <p>Nous ne collectons aucune information de paiement en ligne (les commandes sont réglées directement avec le
+          livreur), et nous ne demandons ni mot de passe ni donnée bancaire aux clients du site public.</p>
+
+          <h5 class="fw-bold mt-4">Comment nous utilisons ces informations</h5>
+          <p>Ces informations servent uniquement à :</p>
+          <ul>
+            <li>préparer et organiser la livraison de votre commande ;</li>
+            <li>vous contacter si besoin au sujet de votre commande (confirmation, disponibilité des produits, livraison) ;</li>
+            <li>conserver un historique de vos commandes pour la gestion interne de Senavi Pro.</li>
+          </ul>
+
+          <h5 class="fw-bold mt-4">Partage des informations</h5>
+          <p>Nous ne vendons ni ne partageons vos informations personnelles avec des tiers à des fins commerciales ou
+          publicitaires. Elles restent internes à l'équipe Senavi Pro chargée de la préparation et de la livraison des
+          commandes.</p>
+
+          <h5 class="fw-bold mt-4">Conservation des données</h5>
+          <p>Vos informations sont conservées dans notre base de données sécurisée aussi longtemps que nécessaire pour le
+          suivi commercial et comptable de Senavi Pro.</p>
+
+          <h5 class="fw-bold mt-4">Cookies et suivi</h5>
+          <p>Le site public n'utilise pas de cookies publicitaires ni d'outils de suivi tiers (pas de Google Analytics, pas
+          de pixel Facebook). Seul un cookie technique de session est utilisé pour l'espace de connexion réservé à
+          l'équipe interne.</p>
+
+          <h5 class="fw-bold mt-4">Vos droits</h5>
+          <p>Vous pouvez à tout moment nous demander de consulter, corriger ou supprimer les informations que nous
+          détenons à votre sujet, en nous contactant :</p>
+          <ul>
+            <li>par téléphone ou WhatsApp au {{ company_info.phone }} ;</li>
+            <li>ou directement à notre adresse : {{ company_info.address }}.</li>
+          </ul>
+
+          <h5 class="fw-bold mt-4">Modifications de cette politique</h5>
+          <p>Nous pouvons mettre à jour cette politique de confidentialité de temps à autre. Toute modification sera
+          publiée sur cette page avec sa date de mise à jour.</p>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}

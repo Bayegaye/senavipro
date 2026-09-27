@@ -7,8 +7,9 @@ init_db.py, pour que les nouveaux produits par défaut apparaissent aussi sur
 une base de données déjà en service.
 """
 import os
+import secrets
 
-from models import db, User, Product
+from models import db, User, Product, DeliveryTier
 
 # (nom, unité, seuil d'alerte, prix de vente par défaut, prix d'achat par défaut)
 DEFAULT_PRODUCTS = [
@@ -21,6 +22,21 @@ DEFAULT_PRODUCTS = [
 # En hébergement en ligne, définissez la variable d'environnement ADMIN_PASSWORD
 # pour éviter que le mot de passe admin par défaut ne reste utilisable publiquement.
 DEFAULT_ADMIN_PASSWORD = "senavipro2026"
+
+# Compte technique (sans mot de passe utilisable — voir plus bas) auquel sont
+# rattachées les commandes passées par les clients depuis le site public
+# (/commander), qui n'agissent pas au nom d'un membre de l'équipe.
+SYSTEM_USERNAME = "boutique-en-ligne"
+
+# Paliers de prix de livraison par défaut (en FCFA), selon la quantité totale
+# du panier (tous produits confondus) — proposition initiale, modifiable à
+# tout moment par l'administrateur sur la page Livraison > Tarifs.
+DEFAULT_DELIVERY_TIERS = [
+    (1, 5, 1000),
+    (6, 15, 1500),
+    (16, 30, 2500),
+    (31, None, 4000),
+]
 
 
 def ensure_seed_data(verbose=False):
@@ -45,5 +61,29 @@ def ensure_seed_data(verbose=False):
             ))
             if verbose:
                 print(f"Produit '{name}' créé.")
+
+    if not User.query.filter_by(username=SYSTEM_USERNAME).first():
+        # Compte désactivé (active=False) : la connexion vérifie toujours
+        # user.active avant d'accepter un mot de passe, donc ce compte ne
+        # peut jamais servir à se connecter, quel que soit le mot de passe
+        # (aléatoire et non communiqué) qui lui est attribué ici. Il n'existe
+        # que pour satisfaire la contrainte "user_id obligatoire" sur les
+        # commandes/ventes, dont l'auteur réel est un client du site public.
+        system_user = User(
+            username=SYSTEM_USERNAME,
+            full_name="Boutique en ligne (compte technique)",
+            role="employe",
+            active=False,
+        )
+        system_user.set_password(secrets.token_hex(32))
+        db.session.add(system_user)
+        if verbose:
+            print("Compte technique 'boutique-en-ligne' créé (commandes du site public).")
+
+    if DeliveryTier.query.count() == 0:
+        for qmin, qmax, prix in DEFAULT_DELIVERY_TIERS:
+            db.session.add(DeliveryTier(quantite_min=qmin, quantite_max=qmax, prix=prix))
+        if verbose:
+            print("Paliers de livraison par défaut créés (modifiables sur la page Livraison > Tarifs).")
 
     db.session.commit()

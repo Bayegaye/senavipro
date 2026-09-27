@@ -21,28 +21,73 @@
 </form>
 
 <div class="row g-3 mb-4">
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Total ventes</div>
       <div class="stat-value text-success">{{ '%.0f'|format(ventes_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Achats marchandises</div>
       <div class="stat-value text-danger">{{ '%.0f'|format(achats_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
     <div class="card card-stat p-3">
       <div class="text-muted small">Dépenses générales</div>
       <div class="stat-value text-danger">{{ '%.0f'|format(depenses_total) }} FCFA</div>
     </div>
   </div>
-  <div class="col-md-3">
+  <div class="col-md-2">
+    <div class="card card-stat p-3">
+      <div class="text-muted small">Pertes (cassé/périmé)</div>
+      <div class="stat-value text-danger">{{ '%.0f'|format(pertes_total) }} FCFA</div>
+    </div>
+  </div>
+  <div class="col-md-4">
     <div class="card card-stat p-3">
       <div class="text-muted small">Bénéfice réel</div>
       <div class="stat-value {% if benefice >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(benefice) }} FCFA</div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-12">
+    <div class="card card-stat p-3">
+      <h5>Bénéfice réel par produit</h5>
+      <p class="text-muted small mb-2">Pour chaque produit, prix de vente moyen pondéré et prix d'achat moyen pondéré (calculés sur les montants réels, car un même produit est souvent vendu et acheté à des prix différents) ; le bénéfice réel = chiffre d'affaires de la période − (prix d'achat moyen pondéré × quantité vendue).</p>
+      <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Produit</th><th>Qté vendue</th><th>Prix vente moyen</th><th>Prix achat moyen</th><th>Chiffre d'affaires</th><th>Coût d'achat</th><th>Bénéfice réel</th></tr></thead>
+        <tbody>
+        {% for r in benefice_par_produit %}
+          <tr>
+            <td>{{ r.product.name }}</td>
+            <td>{{ '%.0f'|format(r.quantite_vendue) }}</td>
+            <td>{{ '%.0f'|format(r.prix_vente_moyen) }} FCFA</td>
+            <td>{{ '%.0f'|format(r.prix_achat_moyen) }} FCFA</td>
+            <td>{{ '%.0f'|format(r.chiffre_affaires) }} FCFA</td>
+            <td>{{ '%.0f'|format(r.cout_achat) }} FCFA</td>
+            <td class="fw-semibold {% if r.benefice >= 0 %}text-success{% else %}text-danger{% endif %}">{{ '%.0f'|format(r.benefice) }} FCFA</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="7" class="text-muted">Aucune vente sur cette période.</td></tr>
+        {% endfor %}
+        </tbody>
+        {% if benefice_par_produit %}
+        <tfoot>
+          <tr class="fw-bold">
+            <td colspan="6" class="text-end">Total bénéfice sur produits vendus</td>
+            <td class="{% if benefice_par_produit|sum(attribute='benefice') >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ '%.0f'|format(benefice_par_produit|sum(attribute='benefice')) }} FCFA
+            </td>
+          </tr>
+        </tfoot>
+        {% endif %}
+      </table>
+      </div>
     </div>
   </div>
 </div>

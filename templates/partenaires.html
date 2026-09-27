@@ -40,13 +40,50 @@
             <td>{{ p.address or '—' }}</td>
             <td>{{ '%.0f'|format(stats.get(p.id, 0)) }} FCFA</td>
             {% if current_user.is_admin %}
-            <td>
+            <td class="d-flex gap-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Modifier" data-bs-toggle="modal" data-bs-target="#editPartner{{ p.id }}">✎</button>
               <form method="POST" action="{{ url_for('supprimer_partenaire', type_=type_, pid=p.id) }}" onsubmit="return confirm('Supprimer ?');">
-                <button class="btn btn-sm btn-outline-danger">✕</button>
+                <button class="btn btn-sm btn-outline-danger" title="Supprimer">✕</button>
               </form>
             </td>
             {% endif %}
           </tr>
+          {% if current_user.is_admin %}
+          <div class="modal fade" id="editPartner{{ p.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="POST" action="{{ url_for('modifier_partenaire', type_=type_, pid=p.id) }}">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Modifier {{ 'le client' if type_=='client' else 'le fournisseur' }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-2">
+                      <label class="form-label">Nom</label>
+                      <input type="text" name="name" class="form-control" value="{{ p.name }}" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Téléphone</label>
+                      <input type="text" name="phone" class="form-control" value="{{ p.phone or '' }}">
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Adresse</label>
+                      <input type="text" name="address" class="form-control" value="{{ p.address or '' }}">
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Note</label>
+                      <input type="text" name="note" class="form-control" value="{{ p.note or '' }}">
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Enregistrer les modifications</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endif %}
         {% else %}
           <tr><td colspan="5" class="text-muted">Aucun enregistrement.</td></tr>
         {% endfor %}

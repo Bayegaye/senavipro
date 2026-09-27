@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}Livraisons{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+  <h3 class="mb-0">Commandes en ligne / Livraisons</h3>
+  {% if current_user.is_admin %}
+  <a href="{{ url_for('tarifs_livraison') }}" class="btn btn-outline-secondary btn-sm">Tarifs de livraison</a>
+  {% endif %}
+</div>
+
+<div class="card card-stat p-3 mb-3">
+  <form method="GET" class="row g-2">
+    <div class="col-md-4">
+      <select name="statut" class="form-select form-select-sm" onchange="this.form.submit()">
+        <option value="actives" {% if statut_filtre=='actives' %}selected{% endif %}>En cours (nouvelle, confirmée, en livraison)</option>
+        <option value="nouvelle" {% if statut_filtre=='nouvelle' %}selected{% endif %}>Nouvelles</option>
+        <option value="confirmee" {% if statut_filtre=='confirmee' %}selected{% endif %}>Confirmées</option>
+        <option value="en_livraison" {% if statut_filtre=='en_livraison' %}selected{% endif %}>En livraison</option>
+        <option value="livree" {% if statut_filtre=='livree' %}selected{% endif %}>Livrées</option>
+        <option value="annulee" {% if statut_filtre=='annulee' %}selected{% endif %}>Annulées</option>
+      </select>
+    </div>
+  </form>
+</div>
+
+{% if not groupes %}
+<div class="card card-stat p-4 text-muted text-center">Aucune commande en ligne pour ce filtre.</div>
+{% endif %}
+
+{% for g in groupes %}
+{% set lignes = lignes_par_groupe.get(g.id, []) %}
+<div class="card card-stat p-3 mb-3">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-2">
+    <div>
+      <div class="fw-bold">{{ g.numero }}
+        {% if g.status == 'nouvelle' %}<span class="badge bg-warning text-dark ms-1">Nouvelle</span>
+        {% elif g.status == 'confirmee' %}<span class="badge bg-info text-dark ms-1">Confirmée</span>
+        {% elif g.status == 'en_livraison' %}<span class="badge bg-primary ms-1">En livraison</span>
+        {% elif g.status == 'livree' %}<span class="badge bg-success ms-1">Livrée</span>
+        {% else %}<span class="badge bg-secondary ms-1">Annulée</span>
+        {% endif %}
+      </div>
+      <div class="small text-muted">{{ g.created_at.strftime('%d/%m/%Y %H:%M') }} · {{ g.client.name if g.client else '—' }}</div>
+    </div>
+    <div class="text-end">
+      <div class="fw-bold">{{ '%.0f'|format(g.total) }} FCFA</div>
+      <div class="small text-muted">dont {{ '%.0f'|format(g.delivery_fee) }} FCFA livraison</div>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-2">
+    <div class="col-md-6">
+      <i class="bi bi-telephone me-1"></i><a href="tel:{{ g.client_phone }}">{{ g.client_phone }}</a>
+    </div>
+    <div class="col-md-6">
+      <i class="bi bi-geo-alt me-1"></i>{{ g.client_address }}
+    </div>
+  </div>
+  {% if g.note %}<div class="small text-muted mb-2"><i class="bi bi-chat-left-text me-1"></i>{{ g.note }}</div>{% endif %}
+
+  <div class="table-responsive mb-2">
+    <table class="table table-sm mb-0">
+      <thead><tr class="small text-muted"><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Total</th></tr></thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr>
+          <td>{{ l.product.name if l.product else '—' }}</td>
+          <td class="text-center">{{ '%.0f'|format(l.quantity) }}</td>
+          <td class="text-end">{{ '%.0f'|format(l.total) }} FCFA</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="d-flex gap-2 flex-wrap">
+    {% if g.status == 'nouvelle' %}
+    <form method="POST" action="{{ url_for('confirmer_livraison', gid=g.id) }}" onsubmit="return confirm('Confirmer cette commande et la transformer en vente ? Le stock physique sera débité.');">
+      <button class="btn btn-sm btn-success">Confirmer (créer la vente)</button>
+    </form>
+    <form method="POST" action="{{ url_for('annuler_livraison', gid=g.id) }}" onsubmit="return confirm('Annuler cette commande ?');">
+      <button class="btn btn-sm btn-outline-warning">Annuler</button>
+    </form>
+    {% elif g.status == 'confirmee' %}
+    <form method="POST" action="{{ url_for('changer_statut_livraison', gid=g.id) }}">
+      <input type="hidden" name="statut" value="en_livraison">
+      <button class="btn btn-sm btn-primary">Marquer « en livraison »</button>
+    </form>
+    {% elif g.status == 'en_livraison' %}
+    <form method="POST" action="{{ url_for('changer_statut_livraison', gid=g.id) }}">
+      <input type="hidden" name="statut" value="livree">
+      <button class="btn btn-sm btn-success">Marquer « livrée »</button>
+    </form>
+    {% endif %}
+    {% if g.sale_id %}
+    <a href="{{ url_for('facture_detail', sid=g.sale_id) }}" target="_blank" class="btn btn-sm btn-outline-primary">Voir la facture</a>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+{% endblock %}

@@ -66,13 +66,50 @@
             <td><strong>{{ '%.0f'|format(e.amount) }}</strong> FCFA</td>
             <td class="text-muted small">{{ e.user.full_name if e.user else '' }}</td>
             {% if current_user.is_admin %}
-            <td>
+            <td class="d-flex gap-1">
+              <button type="button" class="btn btn-sm btn-outline-secondary" title="Modifier" data-bs-toggle="modal" data-bs-target="#editExpense{{ e.id }}">✎</button>
               <form method="POST" action="{{ url_for('supprimer_depense', eid=e.id) }}" onsubmit="return confirm('Supprimer cette dépense ?');">
-                <button class="btn btn-sm btn-outline-danger">✕</button>
+                <button class="btn btn-sm btn-outline-danger" title="Supprimer">✕</button>
               </form>
             </td>
             {% endif %}
           </tr>
+          {% if current_user.is_admin %}
+          <div class="modal fade" id="editExpense{{ e.id }}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <form method="POST" action="{{ url_for('modifier_depense', eid=e.id) }}">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Modifier la dépense</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-2">
+                      <label class="form-label">Catégorie</label>
+                      <input type="text" name="category" class="form-control" list="categories-list" value="{{ e.category }}" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Description (optionnel)</label>
+                      <input type="text" name="description" class="form-control" value="{{ e.description or '' }}">
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Montant (FCFA)</label>
+                      <input type="number" step="any" min="0.01" name="amount" class="form-control" value="{{ e.amount }}" required>
+                    </div>
+                    <div class="mb-2">
+                      <label class="form-label">Date</label>
+                      <input type="date" name="date" class="form-control" value="{{ e.date.isoformat() }}" required>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-success">Enregistrer les modifications</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          {% endif %}
         {% else %}
           <tr><td colspan="6" class="text-muted">Aucune dépense enregistrée.</td></tr>
         {% endfor %}
