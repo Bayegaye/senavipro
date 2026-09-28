@@ -456,7 +456,7 @@ def commander():
                 continue
             try:
                 pid = int(pid_raw)
-                qty = float(qty_raw)
+                qty = _parse_decimal(qty_raw)
             except ValueError:
                 continue
             if qty <= 0 or pid not in produits_par_id:
@@ -1113,8 +1113,8 @@ def nouvelle_vente():
                 continue
             try:
                 pid = int(pid_raw)
-                qty = float(qty_raw)
-                price = float(price_raw) if price_raw else 0.0
+                qty = _parse_decimal(qty_raw)
+                price = _parse_decimal(price_raw) if price_raw else 0.0
             except ValueError:
                 flash("Une ligne de la facture contient une valeur invalide.", "danger")
                 return redirect(url_for("nouvelle_vente"))
@@ -1638,7 +1638,7 @@ def tarifs_livraison():
         try:
             quantite_min = _parse_decimal(request.form["quantite_min"])
             quantite_max_raw = request.form.get("quantite_max", "").strip()
-            quantite_max = float(quantite_max_raw) if quantite_max_raw else None
+            quantite_max = _parse_decimal(quantite_max_raw) if quantite_max_raw else None
             prix = _parse_decimal(request.form["prix"])
         except (KeyError, ValueError):
             flash("Valeurs invalides.", "danger")
@@ -1666,7 +1666,7 @@ def modifier_tarif_livraison(tid):
     try:
         quantite_min = _parse_decimal(request.form["quantite_min"])
         quantite_max_raw = request.form.get("quantite_max", "").strip()
-        quantite_max = float(quantite_max_raw) if quantite_max_raw else None
+        quantite_max = _parse_decimal(quantite_max_raw) if quantite_max_raw else None
         prix = _parse_decimal(request.form["prix"])
     except (KeyError, ValueError):
         flash("Valeurs invalides.", "danger")
@@ -1706,10 +1706,10 @@ def produits():
         name = request.form.get("name", "").strip()
         unit = request.form.get("unit", "").strip()
         try:
-            stock_initial = float(request.form.get("stock_initial") or 0)
-            seuil_alerte = float(request.form.get("seuil_alerte") or 0)
-            prix_vente_defaut = float(request.form.get("prix_vente_defaut") or 0)
-            prix_achat_defaut = float(request.form.get("prix_achat_defaut") or 0)
+            stock_initial = _parse_decimal(request.form.get("stock_initial") or 0)
+            seuil_alerte = _parse_decimal(request.form.get("seuil_alerte") or 0)
+            prix_vente_defaut = _parse_decimal(request.form.get("prix_vente_defaut") or 0)
+            prix_achat_defaut = _parse_decimal(request.form.get("prix_achat_defaut") or 0)
         except ValueError:
             flash("Valeurs numériques invalides.", "danger")
             return redirect(url_for("produits"))
@@ -1742,9 +1742,9 @@ def modifier_produit(pid):
     name = request.form.get("name", "").strip()
     unit = request.form.get("unit", "").strip()
     try:
-        seuil_alerte = float(request.form.get("seuil_alerte", p.seuil_alerte))
-        prix_vente_defaut = float(request.form.get("prix_vente_defaut", p.prix_vente_defaut))
-        prix_achat_defaut = float(request.form.get("prix_achat_defaut", p.prix_achat_defaut))
+        seuil_alerte = _parse_decimal(request.form.get("seuil_alerte", p.seuil_alerte))
+        prix_vente_defaut = _parse_decimal(request.form.get("prix_vente_defaut", p.prix_vente_defaut))
+        prix_achat_defaut = _parse_decimal(request.form.get("prix_achat_defaut", p.prix_achat_defaut))
     except ValueError:
         flash("Valeurs numériques invalides.", "danger")
         return redirect(url_for("produits"))
@@ -2047,7 +2047,7 @@ def stock():
         try:
             product_id = int(request.form["product_id"])
             nouveau_stock = _parse_decimal(request.form["nouveau_stock"])
-            seuil_alerte = float(request.form.get("seuil_alerte", 0))
+            seuil_alerte = _parse_decimal(request.form.get("seuil_alerte", 0))
         except (KeyError, ValueError):
             flash("Formulaire invalide.", "danger")
             return redirect(url_for("stock"))

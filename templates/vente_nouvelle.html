@@ -75,8 +75,8 @@
         {% endfor %}
       </select>
     </td>
-    <td><input type="number" step="any" min="0.01" name="quantity[]" class="form-control form-control-sm qty-input" required></td>
-    <td><input type="number" step="any" min="0" name="unit_price[]" class="form-control form-control-sm price-input" required></td>
+    <td><input type="text" inputmode="decimal" step="any" min="0.01" name="quantity[]" class="form-control form-control-sm qty-input" required></td>
+    <td><input type="text" inputmode="decimal" step="any" min="0" name="unit_price[]" class="form-control form-control-sm price-input" required></td>
     <td class="text-end sous-total">0</td>
     <td><button type="button" class="btn btn-sm btn-outline-danger retirer-ligne">×</button></td>
   </tr>
@@ -87,14 +87,19 @@
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var body = document.getElementById('lignes-body');
+  // Accepte la virgule comme séparateur décimal (clavier mobile français),
+  // que parseFloat() seul ne comprend pas (il tronque à la virgule).
+  function toNum(v) {
+    return parseFloat(String(v || '').replace(',', '.')) || 0;
+  }
   var template = document.getElementById('ligne-template');
   var totalEl = document.getElementById('total-facture');
 
   function recalcTotal() {
     var total = 0;
     body.querySelectorAll('.ligne-row').forEach(function (row) {
-      var qty = parseFloat(row.querySelector('.qty-input').value) || 0;
-      var price = parseFloat(row.querySelector('.price-input').value) || 0;
+      var qty = toNum(row.querySelector('.qty-input').value);
+      var price = toNum(row.querySelector('.price-input').value);
       var sousTotal = qty * price;
       row.querySelector('.sous-total').textContent = sousTotal.toLocaleString('fr-FR', {maximumFractionDigits: 0});
       total += sousTotal;
@@ -134,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
   document.getElementById('facture-form').addEventListener('submit', function (e) {
     var lignesValides = 0;
     body.querySelectorAll('.ligne-row').forEach(function (row) {
-      if (row.querySelector('.produit-select').value && parseFloat(row.querySelector('.qty-input').value) > 0) {
+      if (row.querySelector('.produit-select').value && toNum(row.querySelector('.qty-input').value) > 0) {
         lignesValides++;
       }
     });

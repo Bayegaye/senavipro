@@ -70,7 +70,7 @@
                 </td>
                 <td class="text-end">{{ '%.0f'|format(p.prix_vente_defaut) }}</td>
                 <td class="text-center">
-                  <input type="number" class="form-control form-control-sm sp-qty-input mx-auto sp-qty" min="0" step="any" value="0" inputmode="decimal">
+                  <input type="text" class="form-control form-control-sm sp-qty-input mx-auto sp-qty" min="0" step="any" value="0" inputmode="decimal">
                 </td>
                 <td class="text-end sp-line-total fw-semibold">0</td>
               </tr>
@@ -162,6 +162,11 @@
     return dernier ? dernier.prix : 0;
   }
 
+  // Accepte la virgule comme séparateur décimal (clavier mobile français),
+  // que parseFloat() seul ne comprend pas (il tronque à la virgule).
+  function toNum(v) {
+    return parseFloat(String(v || '').replace(',', '.')) || 0;
+  }
   function fmt(n) {
     return Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, " ") + " FCFA";
   }
@@ -174,7 +179,7 @@
     var totalProduits = 0, qteTotale = 0;
     rows.forEach(function (row, idx) {
       var qtyInput = row.querySelector(".sp-qty");
-      var qty = parseFloat(qtyInput.value) || 0;
+      var qty = toNum(qtyInput.value);
       if (qty < 0) qty = 0;
       var price = parseFloat(row.getAttribute("data-price")) || 0;
       var lineTotal = qty * price;

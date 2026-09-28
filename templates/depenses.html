@@ -24,7 +24,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label">Montant (FCFA)</label>
-          <input type="number" step="any" min="0.01" name="amount" class="form-control" required>
+          <input type="text" inputmode="decimal" step="any" min="0.01" name="amount" class="form-control" required>
         </div>
         <div class="mb-3">
           <label class="form-label">Date</label>
@@ -94,7 +94,7 @@
                     </div>
                     <div class="mb-2">
                       <label class="form-label">Montant (FCFA)</label>
-                      <input type="number" step="any" min="0.01" name="amount" class="form-control" value="{{ e.amount }}" required>
+                      <input type="text" inputmode="decimal" step="any" min="0.01" name="amount" class="form-control" value="{{ e.amount }}" required>
                     </div>
                     <div class="mb-2">
                       <label class="form-label">Date</label>

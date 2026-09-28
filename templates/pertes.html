@@ -19,7 +19,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label">Quantité</label>
-          <input type="number" step="any" min="0.01" name="quantity" class="form-control" required>
+          <input type="text" inputmode="decimal" step="any" min="0.01" name="quantity" class="form-control" required>
         </div>
         <div class="mb-2">
           <label class="form-label">Raison</label>
@@ -103,7 +103,7 @@
                     </div>
                     <div class="mb-2">
                       <label class="form-label">Quantité</label>
-                      <input type="number" step="any" min="0.01" name="quantity" class="form-control" value="{{ l.quantity }}" required>
+                      <input type="text" inputmode="decimal" step="any" min="0.01" name="quantity" class="form-control" value="{{ l.quantity }}" required>
                     </div>
                     <div class="mb-2">
                       <label class="form-label">Raison</label>

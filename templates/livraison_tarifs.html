@@ -15,16 +15,16 @@
         <div class="row">
           <div class="col-6 mb-2">
             <label class="form-label">Quantité min</label>
-            <input type="number" step="any" min="1" name="quantite_min" class="form-control" required>
+            <input type="text" inputmode="decimal" step="any" min="1" name="quantite_min" class="form-control" required>
           </div>
           <div class="col-6 mb-2">
             <label class="form-label">Quantité max (vide = illimité)</label>
-            <input type="number" step="any" min="1" name="quantite_max" class="form-control">
+            <input type="text" inputmode="decimal" step="any" min="1" name="quantite_max" class="form-control">
           </div>
         </div>
         <div class="mb-3">
           <label class="form-label">Prix de livraison (FCFA)</label>
-          <input type="number" step="any" min="0" name="prix" class="form-control" required>
+          <input type="text" inputmode="decimal" step="any" min="0" name="prix" class="form-control" required>
         </div>
         <button type="submit" class="btn btn-success w-100">Ajouter le palier</button>
       </form>
@@ -39,9 +39,9 @@
           <tbody>
           {% for t in liste %}
             <tr>
-              <td><input type="number" step="any" name="quantite_min" value="{{ t.quantite_min }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
-              <td><input type="number" step="any" name="quantite_max" value="{{ t.quantite_max if t.quantite_max is not none else '' }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px" placeholder="illimité"></td>
-              <td><input type="number" step="any" name="prix" value="{{ t.prix }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
+              <td><input type="text" inputmode="decimal" step="any" name="quantite_min" value="{{ t.quantite_min }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
+              <td><input type="text" inputmode="decimal" step="any" name="quantite_max" value="{{ t.quantite_max if t.quantite_max is not none else '' }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px" placeholder="illimité"></td>
+              <td><input type="text" inputmode="decimal" step="any" name="prix" value="{{ t.prix }}" form="edit-{{ t.id }}" class="form-control form-control-sm" style="width:100px"></td>
               <td class="d-flex gap-1">
                 <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ t.id }}">Enregistrer</button>
                 <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ t.id }}">✕</button>

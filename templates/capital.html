@@ -81,7 +81,7 @@
       <form method="POST" action="{{ url_for('maj_solde_initial') }}" class="d-flex gap-2 align-items-end">
         <div class="flex-grow-1">
           <label class="form-label small mb-1">Modifier le solde de caisse initial</label>
-          <input type="number" step="any" name="solde_caisse_initial" class="form-control form-control-sm" value="{{ settings.solde_caisse_initial }}" required>
+          <input type="text" inputmode="decimal" step="any" name="solde_caisse_initial" class="form-control form-control-sm" value="{{ settings.solde_caisse_initial }}" required>
         </div>
         <button class="btn btn-sm btn-outline-success">Enregistrer</button>
       </form>
@@ -138,7 +138,7 @@
         <div class="row g-2">
           <div class="col-6">
             <label class="form-label">Montant (FCFA)</label>
-            <input type="number" step="any" min="0" name="amount" class="form-control" required>
+            <input type="text" inputmode="decimal" step="any" min="0" name="amount" class="form-control" required>
           </div>
           <div class="col-6">
             <label class="form-label">Date</label>
