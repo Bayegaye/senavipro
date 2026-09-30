@@ -11,4 +11,4 @@ ENV PORT=5000
 EXPOSE 5000
 
 # Applique les migrations/données de démarrage puis lance le serveur de production.
-CMD python init_db.py && gunicorn wsgi:app --bind 0.0.0.0:${PORT} --workers 3
+CMD python init_db.py && gunicorn wsgi:app --bind 0.0.0.0:${PORT} --workers 2 --max-requests 200 --max-requests-jitter 50
