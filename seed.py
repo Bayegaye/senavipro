@@ -31,11 +31,9 @@ SYSTEM_USERNAME = "boutique-en-ligne"
 # Paliers de prix de livraison par défaut (en FCFA), selon la quantité totale
 # du panier (tous produits confondus) — proposition initiale, modifiable à
 # tout moment par l'administrateur sur la page Livraison > Tarifs.
+# Livraison à tarif unique (2000 FCFA), quelle que soit la quantité commandée.
 DEFAULT_DELIVERY_TIERS = [
-    (1, 5, 1000),
-    (6, 15, 1500),
-    (16, 30, 2500),
-    (31, None, 4000),
+    (1, None, 2000),
 ]
 
 

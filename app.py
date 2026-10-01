@@ -153,6 +153,25 @@ def _ensure_schema_upgrades():
     _ensure_column(inspector, "orders", "order_group_id", "INTEGER")
 
 
+def _ensure_frais_livraison_fixe():
+    """Passe la livraison à un tarif unique de 2000 FCFA quelle que soit la
+    quantité commandée, en remplaçant les anciens paliers par quantité
+    (1-5, 6-15, 16-30, 31+) par un seul palier ouvert (1 à l'infini, 2000
+    FCFA). Idempotente et sûre à ré-exécuter à chaque démarrage : si un seul
+    palier est déjà configuré (que ce soit celui-ci ou un autre tarif choisi
+    depuis la page Livraison > Tarifs), cette fonction ne touche à rien —
+    elle ne fait la consolidation qu'une fois, tant que plusieurs paliers
+    coexistent encore."""
+    tiers = DeliveryTier.query.all()
+    if len(tiers) <= 1:
+        return
+    for tier in tiers:
+        db.session.delete(tier)
+    db.session.add(DeliveryTier(quantite_min=1, quantite_max=None, prix=2000))
+    db.session.commit()
+    print("Livraison consolidée sur un tarif unique de 2000 FCFA (quelle que soit la quantité).")
+
+
 def _generer_factures_manquantes():
     """Génère rétroactivement une facture individuelle pour chaque vente
     enregistrée avant l'ajout de la facturation automatique sur le
@@ -216,6 +235,7 @@ with app.app_context():
     _generer_factures_manquantes()
     from seed import ensure_seed_data
     ensure_seed_data(verbose=False)
+    _ensure_frais_livraison_fixe()
 
 login_manager = LoginManager()
 login_manager.login_view = "login"
