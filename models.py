@@ -243,3 +243,24 @@ class CapitalSettings(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     solde_caisse_initial = db.Column(db.Float, nullable=False, default=0)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CapitalSnapshot(db.Model):
+    """Relevé du capital total de l'entreprise (situation financière calculée
+    par la route /capital) à une date donnée, conservé pour pouvoir analyser
+    son évolution dans le temps : augmentation ou diminution, en valeur
+    absolue et en pourcentage.
+
+    Une seule ligne par jour (date unique) : enregistrée/mise à jour
+    automatiquement à chaque consultation de la page Capital ce jour-là (voir
+    _enregistrer_releve_capital_du_jour() dans app.py), donc toujours à jour
+    pour le jour courant, et figée (historique) pour les jours passés."""
+    __tablename__ = "capital_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, unique=True)
+    situation_financiere = db.Column(db.Float, nullable=False)
+    valeur_stock = db.Column(db.Float, nullable=False, default=0)
+    argent_disponible_fournisseurs = db.Column(db.Float, nullable=False, default=0)
+    argent_liquide = db.Column(db.Float, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -13,7 +13,7 @@ from flask_login import (
 )
 from sqlalchemy import func, inspect, text
 
-from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss, OrderGroup, DeliveryTier, SupplierPayment, CapitalSettings
+from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss, OrderGroup, DeliveryTier, SupplierPayment, CapitalSettings, CapitalSnapshot
 
 APP_NAME = "SENAVIPRO"
 
@@ -2368,6 +2368,62 @@ def _get_capital_settings():
     return settings
 
 
+NOMS_MOIS = {
+    1: "Janvier", 2: "Février", 3: "Mars", 4: "Avril", 5: "Mai", 6: "Juin",
+    7: "Juillet", 8: "Août", 9: "Septembre", 10: "Octobre", 11: "Novembre", 12: "Décembre",
+}
+
+
+def _enregistrer_releve_capital_du_jour(situation_financiere, valeur_stock, argent_disponible_fournisseurs, argent_liquide):
+    """Enregistre (ou met à jour) le relevé de capital du jour, afin de
+    constituer un historique permettant d'analyser son évolution (en valeur
+    et en %). Un seul relevé par jour : s'il existe déjà pour aujourd'hui, il
+    est simplement mis à jour avec les valeurs actuelles (le relevé du jour
+    reste donc à jour jusqu'à minuit) ; les relevés des jours passés, eux, ne
+    sont plus modifiés et constituent l'historique figé."""
+    today = date.today()
+    snap = CapitalSnapshot.query.filter_by(date=today).first()
+    if not snap:
+        snap = CapitalSnapshot(date=today)
+        db.session.add(snap)
+    snap.situation_financiere = situation_financiere
+    snap.valeur_stock = valeur_stock
+    snap.argent_disponible_fournisseurs = argent_disponible_fournisseurs
+    snap.argent_liquide = argent_liquide
+    db.session.commit()
+    return snap
+
+
+def _dernier_releve_avant(d):
+    """Retourne le relevé de capital le plus récent strictement antérieur à
+    la date `d`, ou None si l'historique ne remonte pas jusque-là."""
+    return (
+        CapitalSnapshot.query.filter(CapitalSnapshot.date < d)
+        .order_by(CapitalSnapshot.date.desc())
+        .first()
+    )
+
+
+def _calcule_evolution(capital_actuel, reference):
+    """Calcule la variation du capital entre un relevé de référence passé et
+    sa valeur actuelle : variation absolue (FCFA) et relative (%). Retourne
+    None si aucun relevé de référence n'est disponible (historique pas
+    encore assez ancien)."""
+    if reference is None:
+        return None
+    variation_absolue = capital_actuel - reference.situation_financiere
+    variation_pct = (
+        (variation_absolue / abs(reference.situation_financiere)) * 100
+        if reference.situation_financiere
+        else None  # référence nulle : une variation en % n'a pas de sens
+    )
+    return {
+        "reference": reference,
+        "variation_absolue": variation_absolue,
+        "variation_pct": variation_pct,
+    }
+
+
 @app.route("/capital")
 @login_required
 def capital():
@@ -2410,6 +2466,51 @@ def capital():
 
     situation_financiere = valeur_stock + argent_disponible_fournisseurs + argent_liquide
 
+    # ---------- Évolution du capital (variation en valeur et en %) ----------
+    _enregistrer_releve_capital_du_jour(
+        situation_financiere, valeur_stock, argent_disponible_fournisseurs, argent_liquide
+    )
+    aujourdhui = date.today()
+    evolution_veille = _calcule_evolution(situation_financiere, _dernier_releve_avant(aujourdhui))
+    evolution_debut_mois = _calcule_evolution(
+        situation_financiere, _dernier_releve_avant(aujourdhui.replace(day=1))
+    )
+    evolution_debut_annee = _calcule_evolution(
+        situation_financiere, _dernier_releve_avant(aujourdhui.replace(month=1, day=1))
+    )
+    premier_releve = CapitalSnapshot.query.order_by(CapitalSnapshot.date.asc()).first()
+    evolution_depuis_debut_suivi = (
+        _calcule_evolution(situation_financiere, premier_releve)
+        if premier_releve and premier_releve.date < aujourdhui
+        else None
+    )
+
+    # Historique mensuel : on ne garde que le dernier relevé de chaque mois
+    # (capital de fin de mois), avec sa variation par rapport au mois
+    # précédent, du plus récent au plus ancien.
+    dernier_releve_par_mois = {}
+    for s in CapitalSnapshot.query.order_by(CapitalSnapshot.date.asc()).all():
+        dernier_releve_par_mois[(s.date.year, s.date.month)] = s
+    historique_mensuel = []
+    releve_precedent = None
+    for cle in sorted(dernier_releve_par_mois.keys()):
+        s = dernier_releve_par_mois[cle]
+        variation_absolue = variation_pct = None
+        if releve_precedent is not None:
+            variation_absolue = s.situation_financiere - releve_precedent.situation_financiere
+            if releve_precedent.situation_financiere:
+                variation_pct = variation_absolue / abs(releve_precedent.situation_financiere) * 100
+        historique_mensuel.append({
+            "nom_mois": NOMS_MOIS[cle[1]],
+            "annee": cle[0],
+            "date": s.date,
+            "situation_financiere": s.situation_financiere,
+            "variation_absolue": variation_absolue,
+            "variation_pct": variation_pct,
+        })
+        releve_precedent = s
+    historique_mensuel.reverse()
+
     versements_recents = (
         SupplierPayment.query.order_by(
             SupplierPayment.date.desc(), SupplierPayment.created_at.desc()
@@ -2422,6 +2523,11 @@ def capital():
         valeur_stock=valeur_stock,
         fournisseurs=fournisseurs,
         fournisseurs_detail=fournisseurs_detail,
+        evolution_veille=evolution_veille,
+        evolution_debut_mois=evolution_debut_mois,
+        evolution_debut_annee=evolution_debut_annee,
+        evolution_depuis_debut_suivi=evolution_depuis_debut_suivi,
+        historique_mensuel=historique_mensuel,
         argent_disponible_fournisseurs=argent_disponible_fournisseurs,
         settings=settings,
         total_ventes=total_ventes,
