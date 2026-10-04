@@ -40,6 +40,8 @@ PRODUCT_IMAGES = {
     "pack d'eau": "img/products/eau_minerale.jpg",
     "eau minerale": "img/products/eau_minerale.jpg",
     "eau minérale": "img/products/eau_minerale.jpg",
+    "boisson": "img/products/boissons.jpg",
+    "boissons": "img/products/boissons.jpg",
 }
 
 
