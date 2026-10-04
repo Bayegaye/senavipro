@@ -85,7 +85,7 @@
       <table class="table table-sm mb-0">
         <thead><tr><th>Produit</th><th>Stock</th><th>Unité</th></tr></thead>
         <tbody>
-        {% for p in produits %}
+        {% for p in produits if p.actif %}
           <tr class="{% if p.stock <= p.seuil_alerte %}table-warning{% endif %}">
             <td>{{ p.name }}</td>
             <td>{{ '%.0f'|format(p.stock) }}</td>

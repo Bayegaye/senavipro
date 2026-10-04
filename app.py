@@ -151,6 +151,9 @@ def _ensure_schema_upgrades():
     _ensure_column(inspector, "transactions", "sale_id", "INTEGER")
     _ensure_column(inspector, "orders", "sale_id", "INTEGER")
     _ensure_column(inspector, "orders", "order_group_id", "INTEGER")
+    # Produits : retrait (archivage) et identifiant stable des produits par défaut
+    _ensure_column(inspector, "products", "actif", "BOOLEAN NOT NULL DEFAULT TRUE")
+    _ensure_column(inspector, "products", "seed_key", "VARCHAR(64)")
 
 
 def _ensure_frais_livraison_fixe():
@@ -447,7 +450,7 @@ def commander():
     }
     produits = [
         p for p in (
-            Product.query.filter(Product.prix_vente_defaut > 0)
+            Product.query.filter(Product.prix_vente_defaut > 0, Product.actif.is_(True))
             .order_by(Product.name)
             .all()
         )
@@ -768,7 +771,7 @@ def dashboard():
     dernieres_transactions = (
         Transaction.query.order_by(Transaction.created_at.desc()).limit(8).all()
     )
-    alertes_stock = [p for p in produits if p.stock <= p.seuil_alerte]
+    alertes_stock = [p for p in produits if p.actif and p.stock <= p.seuil_alerte]
 
     return render_template(
         "dashboard.html",
@@ -828,6 +831,9 @@ def _create_transaction(type_):
     product = db.session.get(Product, product_id)
     if not product:
         flash("Produit introuvable.", "danger")
+        return
+    if not product.actif:
+        flash(f"Le produit « {product.name} » est retiré : réactivez-le dans Produits pour l'utiliser.", "danger")
         return
 
     if type_ == "vente" and product.stock < quantity:
@@ -1153,8 +1159,8 @@ def nouvelle_vente():
         for ligne in lignes:
             pid = ligne["product_id"]
             product = db.session.get(Product, pid)
-            if not product:
-                flash("Un des produits sélectionnés est introuvable.", "danger")
+            if not product or not product.actif:
+                flash("Un des produits sélectionnés est introuvable ou retiré.", "danger")
                 return redirect(url_for("nouvelle_vente"))
             produits_par_id[pid] = product
             stock_demande[pid] = stock_demande.get(pid, 0) + ligne["quantity"]
@@ -1276,8 +1282,8 @@ def commandes():
         # retrouve le client existant ou on le crée à la volée.
         client = _get_or_create_client(client_name)
         product = db.session.get(Product, product_id)
-        if not product:
-            flash("Produit introuvable.", "danger")
+        if not product or not product.actif:
+            flash("Produit introuvable ou retiré.", "danger")
             return redirect(url_for("commandes"))
 
         disponible = _stock_disponible(product)
@@ -1736,8 +1742,12 @@ def produits():
 
         if not name or not unit:
             flash("Le nom et l'unité sont obligatoires.", "danger")
-        elif Product.query.filter_by(name=name).first():
-            flash("Un produit avec ce nom existe déjà.", "danger")
+        elif (existant := Product.query.filter(db.func.lower(Product.name) == name.lower()).first()):
+            if existant.actif:
+                flash("Un produit avec ce nom existe déjà.", "danger")
+            else:
+                flash(f"Le produit « {existant.name} » existe déjà mais est retiré : "
+                      "cliquez sur « Réactiver » dans la liste.", "warning")
         else:
             p = Product(
                 name=name, unit=unit, stock=stock_initial, seuil_alerte=seuil_alerte,
@@ -1748,8 +1758,12 @@ def produits():
             flash(f"Produit « {name} » ajouté.", "success")
         return redirect(url_for("produits"))
 
-    liste = Product.query.order_by(Product.name).all()
-    return render_template("produits.html", liste=liste)
+    tous = Product.query.order_by(Product.name).all()
+    return render_template(
+        "produits.html",
+        liste=[p for p in tous if p.actif],
+        retires=[p for p in tous if not p.actif],
+    )
 
 
 @app.route("/produits/<int:pid>/modifier", methods=["POST"])
@@ -1769,6 +1783,11 @@ def modifier_produit(pid):
         flash("Valeurs numériques invalides.", "danger")
         return redirect(url_for("produits"))
 
+    if name and name.lower() != p.name.lower():
+        doublon = Product.query.filter(db.func.lower(Product.name) == name.lower(), Product.id != p.id).first()
+        if doublon:
+            flash(f"Un autre produit s'appelle déjà « {doublon.name} ».", "danger")
+            return redirect(url_for("produits"))
     if name:
         p.name = name
     if unit:
@@ -1781,20 +1800,62 @@ def modifier_produit(pid):
     return redirect(url_for("produits"))
 
 
+def _produit_a_un_historique(p):
+    """Vrai si le produit est utilisé par au moins une vente/achat, une
+    commande ou une perte : il ne peut alors pas être effacé de la base
+    (les factures et rapports en ont besoin), seulement retiré."""
+    return (
+        p.transactions.count() > 0
+        or Order.query.filter_by(product_id=p.id).count() > 0
+        or Loss.query.filter_by(product_id=p.id).count() > 0
+    )
+
+
 @app.route("/produits/<int:pid>/supprimer", methods=["POST"])
 @login_required
 @admin_required
 def supprimer_produit(pid):
+    """Retire un produit de la vente. S'il n'a jamais servi (aucune vente,
+    achat, commande ni perte) et n'est pas un produit par défaut, il est
+    supprimé définitivement ; sinon il est archivé : masqué des formulaires
+    et de la boutique en ligne mais conservé pour l'historique."""
     p = db.session.get(Product, pid)
-    if p:
-        if p.transactions.count() > 0:
-            flash("Impossible de supprimer : des transactions y sont liées à ce produit.", "danger")
-        elif p.stock != 0:
-            flash("Impossible de supprimer : le stock de ce produit n'est pas à zéro.", "danger")
-        else:
-            db.session.delete(p)
-            db.session.commit()
-            flash("Produit supprimé.", "info")
+    if not p:
+        abort(404)
+    if p.stock and p.stock > 0 and request.form.get("confirmer_stock") != "1":
+        flash(
+            f"« {p.name} » a encore {p.stock:g} {p.unit} en stock. "
+            "Videz le stock (page Stock) ou confirmez le retrait.",
+            "warning",
+        )
+        return redirect(url_for("produits"))
+    if _produit_a_un_historique(p) or p.seed_key:
+        p.actif = False
+        db.session.commit()
+        flash(
+            f"Produit « {p.name} » retiré. Il n'apparaît plus dans les ventes, achats, "
+            "commandes ni sur la boutique en ligne ; son historique est conservé. "
+            "Vous pouvez le réactiver à tout moment.",
+            "info",
+        )
+    else:
+        nom = p.name
+        db.session.delete(p)
+        db.session.commit()
+        flash(f"Produit « {nom} » supprimé définitivement.", "info")
+    return redirect(url_for("produits"))
+
+
+@app.route("/produits/<int:pid>/reactiver", methods=["POST"])
+@login_required
+@admin_required
+def reactiver_produit(pid):
+    p = db.session.get(Product, pid)
+    if not p:
+        abort(404)
+    p.actif = True
+    db.session.commit()
+    flash(f"Produit « {p.name} » réactivé.", "success")
     return redirect(url_for("produits"))
 
 
@@ -1924,8 +1985,8 @@ def pertes():
             return redirect(url_for("pertes"))
 
         product = db.session.get(Product, product_id)
-        if not product:
-            flash("Produit introuvable.", "danger")
+        if not product or not product.actif:
+            flash("Produit introuvable ou retiré.", "danger")
             return redirect(url_for("pertes"))
 
         if product.stock < quantity:
@@ -2079,7 +2140,8 @@ def stock():
             flash(f"Stock de {product.name} mis à jour.", "success")
         return redirect(url_for("stock"))
 
-    produits = Product.query.order_by(Product.name).all()
+    # Les produits retirés n'apparaissent que s'il leur reste du stock.
+    produits = [p for p in Product.query.order_by(Product.name).all() if p.actif or p.stock]
     return render_template("stock.html", produits=produits)
 
 

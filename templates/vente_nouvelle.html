@@ -68,7 +68,7 @@
     <td>
       <select name="product_id[]" class="form-select form-select-sm produit-select" required>
         <option value="">— Choisir un produit —</option>
-        {% for p in produits %}
+        {% for p in produits if p.actif %}
           <option value="{{ p.id }}" data-price="{{ p.prix_vente_defaut }}" data-stock="{{ p.stock }}" data-unit="{{ p.unit }}">
             {{ p.name }} (stock: {{ '%.0f'|format(p.stock) }} {{ p.unit }})
           </option>

@@ -26,7 +26,7 @@
         <div class="mb-2">
           <label class="form-label">Produit</label>
           <select name="product_id" id="product_id" class="form-select" required>
-            {% for p in produits %}
+            {% for p in produits if p.actif %}
               <option value="{{ p.id }}" data-price="{{ p.prix_vente_defaut if type_=='vente' else p.prix_achat_defaut }}">{{ p.name }} (stock: {{ '%.0f'|format(p.stock) }} {{ p.unit }})</option>
             {% endfor %}
           </select>
@@ -150,7 +150,7 @@
                     <div class="mb-2">
                       <label class="form-label">Produit</label>
                       <select name="product_id" class="form-select" required>
-                        {% for p in produits %}
+                        {% for p in produits if p.actif or p.id == t.product_id %}
                           <option value="{{ p.id }}" {% if p.id==t.product_id %}selected{% endif %}>{{ p.name }}</option>
                         {% endfor %}
                       </select>

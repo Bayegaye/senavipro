@@ -51,14 +51,23 @@ def ensure_seed_data(verbose=False):
     elif verbose:
         print("Le compte admin existe déjà.")
 
+    # Chaque produit par défaut est repéré par sa clé (seed_key), pas par son
+    # nom : l'administrateur peut ainsi le renommer ou le retirer depuis la
+    # page Produits sans qu'il soit recréé au prochain démarrage.
     for name, unit, seuil, prix_vente, prix_achat in DEFAULT_PRODUCTS:
-        if not Product.query.filter_by(name=name).first():
-            db.session.add(Product(
-                name=name, unit=unit, stock=0, seuil_alerte=seuil,
-                prix_vente_defaut=prix_vente, prix_achat_defaut=prix_achat,
-            ))
-            if verbose:
-                print(f"Produit '{name}' créé.")
+        if Product.query.filter_by(seed_key=name).first():
+            continue
+        existant = Product.query.filter_by(name=name).first()
+        if existant:
+            existant.seed_key = name  # base déjà en service : on marque le produit
+            continue
+        db.session.add(Product(
+            name=name, unit=unit, stock=0, seuil_alerte=seuil,
+            prix_vente_defaut=prix_vente, prix_achat_defaut=prix_achat,
+            seed_key=name,
+        ))
+        if verbose:
+            print(f"Produit '{name}' créé.")
 
     if not User.query.filter_by(username=SYSTEM_USERNAME).first():
         # Compte désactivé (active=False) : la connexion vérifie toujours

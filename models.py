@@ -53,6 +53,13 @@ class Product(db.Model):
     seuil_alerte = db.Column(db.Float, nullable=False, default=0)  # seuil de stock bas
     prix_vente_defaut = db.Column(db.Float, default=0)
     prix_achat_defaut = db.Column(db.Float, default=0)
+    # Produit retiré (archivé) : masqué des formulaires de vente, d'achat, de
+    # commande et de la boutique en ligne, mais conservé pour l'historique
+    # (factures, rapports). Réactivable à tout moment depuis la page Produits.
+    actif = db.Column(db.Boolean, nullable=False, default=True)
+    # Identifiant stable des produits créés par défaut (seed.py) : permet de
+    # les renommer ou de les retirer sans qu'ils soient recréés au démarrage.
+    seed_key = db.Column(db.String(64))
 
     transactions = db.relationship("Transaction", backref="product", lazy="dynamic")
 

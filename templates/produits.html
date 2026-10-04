@@ -61,22 +61,56 @@
             <td><input type="text" inputmode="decimal" step="any" name="prix_achat_defaut" value="{{ p.prix_achat_defaut }}" form="edit-{{ p.id }}" class="form-control form-control-sm" style="width:100px"></td>
             <td class="d-flex gap-1">
               <button class="btn btn-sm btn-outline-success" type="submit" form="edit-{{ p.id }}">Enregistrer</button>
-              <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ p.id }}">✕</button>
+              <button class="btn btn-sm btn-outline-danger" type="submit" form="del-{{ p.id }}" title="Retirer ce produit">Retirer</button>
             </td>
           </tr>
         {% else %}
-          <tr><td colspan="7" class="text-muted">Aucun produit.</td></tr>
+          <tr><td colspan="7" class="text-muted">Aucun produit actif. Ajoutez-en un avec le formulaire.</td></tr>
         {% endfor %}
         </tbody>
       </table>
       </div>
-      <p class="text-muted small mb-0">Le stock se modifie depuis la page "Stock". La suppression n'est possible que si le produit n'a aucune transaction et un stock à zéro.</p>
+      <p class="text-muted small mb-0">
+        Modifiez directement les cases puis cliquez sur <strong>Enregistrer</strong>. Le stock se modifie depuis la page « Stock ».<br>
+        <strong>Retirer</strong> : le produit disparaît des ventes, achats, commandes et de la boutique en ligne.
+        S'il n'a jamais été utilisé, il est supprimé ; sinon il est archivé (son historique reste dans les factures et rapports)
+        et peut être réactivé ci-dessous.
+      </p>
     </div>
+
+    {% if retires %}
+    <div class="card card-stat p-3 mt-3">
+      <h5 class="mb-2">Produits retirés</h5>
+      <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead><tr><th>Nom</th><th>Unité</th><th>Stock</th><th>Prix vente</th><th></th></tr></thead>
+        <tbody>
+        {% for p in retires %}
+          <tr class="text-muted">
+            <td>{{ p.name }}</td>
+            <td>{{ p.unit }}</td>
+            <td>{{ '%.0f'|format(p.stock) }}</td>
+            <td>{{ '%.0f'|format(p.prix_vente_defaut or 0) }}</td>
+            <td class="text-end">
+              <form method="POST" action="{{ url_for('reactiver_produit', pid=p.id) }}" class="d-inline">
+                <button class="btn btn-sm btn-outline-success" type="submit">Réactiver</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      </div>
+    </div>
+    {% endif %}
   </div>
 </div>
 
 {% for p in liste %}
 <form id="edit-{{ p.id }}" method="POST" action="{{ url_for('modifier_produit', pid=p.id) }}"></form>
-<form id="del-{{ p.id }}" method="POST" action="{{ url_for('supprimer_produit', pid=p.id) }}" onsubmit="return confirm('Supprimer ce produit ?');"></form>
+<form id="del-{{ p.id }}" method="POST" action="{{ url_for('supprimer_produit', pid=p.id) }}"
+      onsubmit="return confirm({{ ('Retirer le produit « ' ~ p.name ~ ' » ?' ~ (' Il reste ' ~ ('%g'|format(p.stock)) ~ ' ' ~ p.unit ~ ' en stock.' if p.stock > 0 else ''))|tojson|forceescape }});">
+  {% if p.stock > 0 %}<input type="hidden" name="confirmer_stock" value="1">{% endif %}
+</form>
 {% endfor %}
 {% endblock %}
