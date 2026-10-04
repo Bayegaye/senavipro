@@ -60,10 +60,6 @@
                       <div class="fw-semibold">{{ p.name }}</div>
                       <div class="small text-muted">
                         {{ '%.0f'|format(p.prix_vente_defaut) }} FCFA / {{ p.unit }}
-                        {% set dispo = disponibilites.get(p.id, 0) %}
-                        {% if dispo <= 0 %}
-                          <span class="text-warning">· rupture de stock (commande possible, livrée dès réapprovisionnement)</span>
-                        {% endif %}
                       </div>
                     </div>
                   </div>
