@@ -285,7 +285,8 @@ def admin_required(f):
 
 @app.context_processor
 def inject_globals():
-    return {"app_name": APP_NAME, "now": datetime.utcnow(), "company_info": COMPANY_INFO}
+    return {"app_name": APP_NAME, "now": datetime.utcnow(), "company_info": COMPANY_INFO,
+            "product_image": _product_image}
 
 
 # ---------- Authentification ----------

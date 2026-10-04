@@ -9,7 +9,7 @@
     <tbody>
     {% for p in produits %}
       <tr class="{% if p.stock <= p.seuil_alerte %}table-warning{% endif %}">
-        <td>{{ p.name }}</td>
+        <td><div class="d-flex align-items-center">{% set img = product_image(p.name) %}{% if img %}<img src="{{ img }}" alt="" class="rounded me-2" style="width:44px;height:44px;object-fit:cover;flex:0 0 auto">{% else %}<span class="rounded me-2 d-inline-flex align-items-center justify-content-center bg-light text-muted" style="width:44px;height:44px;flex:0 0 auto"><i class="bi bi-image"></i></span>{% endif %}{{ p.name }}</div></td>
         <td>{{ p.unit }}</td>
         <td><strong>{{ '%.0f'|format(p.stock) }}</strong></td>
         <td>{{ '%.0f'|format(p.seuil_alerte) }}</td>

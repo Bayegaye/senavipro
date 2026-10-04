@@ -17,6 +17,22 @@ DEFAULT_PRODUCTS = [
     ("Oeufs de table - Moyen calibre", "plateau", 10, 2000, 1700),
     ("Oeufs de table - Gros calibre", "plateau", 10, 2200, 1900),
     ("Poulets de chair", "unite", 20, 4500, 3500),
+    # Produits présentés sur le site public (page « Nos produits »). Prix de
+    # vente et d'achat laissés à 0 : l'administrateur les complète dans
+    # Produits. Tant que le prix de vente est à 0, le produit n'apparaît pas
+    # sur la page « Commander en ligne ».
+    ("DÉCOUPE DE POULET", "kg", 0, 0, 0),
+    ("BOUYE", "kg", 0, 0, 0),
+    ("BISSAP", "kg", 0, 0, 0),
+    ("GINGEMBRE", "kg", 0, 0, 0),
+    ("NIÉBÉ", "kg", 0, 0, 0),
+    ("RIZ", "sac", 0, 0, 0),
+    ("HUILE", "bidon", 0, 0, 0),
+    ("OIGNON", "sac", 0, 0, 0),
+    ("POMME DE TERRE", "sac", 0, 0, 0),
+    ("AIL", "kg", 0, 0, 0),
+    ("PACK D'EAU MINÉRALE", "pack", 0, 0, 0),
+    ("BOISSONS", "pack", 0, 0, 0),
 ]
 
 # En hébergement en ligne, définissez la variable d'environnement ADMIN_PASSWORD
@@ -57,7 +73,9 @@ def ensure_seed_data(verbose=False):
     for name, unit, seuil, prix_vente, prix_achat in DEFAULT_PRODUCTS:
         if Product.query.filter_by(seed_key=name).first():
             continue
-        existant = Product.query.filter_by(name=name).first()
+        # Même nom à la casse près (« Bissap » saisi à la main = « BISSAP ») :
+        # on réutilise le produit existant au lieu de créer un doublon.
+        existant = Product.query.filter(db.func.lower(Product.name) == name.lower()).first()
         if existant:
             existant.seed_key = name  # base déjà en service : on marque le produit
             continue
