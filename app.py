@@ -23,8 +23,16 @@ APP_NAME = "SENAVIPRO"
 # correspond à la clé "oeufs de table". Un produit dont le nom ne correspond
 # à aucune clé ci-dessous s'affiche simplement sans image.
 PRODUCT_IMAGES = {
-    "oeufs de table": "img/products/oeufs_table.jpg",
-    "poulets de chair": "img/products/poulets_chair.jpg",
+    "oeufs de table": "img/products/oeufs_table_senavi.jpg",
+    "oeufs": "img/products/oeufs_table_senavi.jpg",
+    "oeuf": "img/products/oeufs_table_senavi.jpg",
+    "plateau d'oeufs": "img/products/oeufs_table_senavi.jpg",
+    "poulets de chair": "img/products/poulet_entier_senavi.jpg",
+    "poulet de chair": "img/products/poulet_entier_senavi.jpg",
+    "poulet entier": "img/products/poulet_entier_senavi.jpg",
+    "poulets entiers": "img/products/poulet_entier_senavi.jpg",
+    "poulets": "img/products/poulet_entier_senavi.jpg",
+    "poulet": "img/products/poulet_entier_senavi.jpg",
     "découpe": "img/products/decoupe_poulet.jpg",
     "decoupe": "img/products/decoupe_poulet.jpg",
     "cuisse": "img/products/decoupe_poulet.jpg",
@@ -68,11 +76,19 @@ def _ordre_produits():
     return (rang, Product.name)
 
 
+def _sans_accents(texte):
+    import unicodedata
+    return "".join(c for c in unicodedata.normalize("NFD", texte) if unicodedata.category(c) != "Mn")
+
+
 def _product_image(product_name):
     """Retourne l'URL statique de l'image correspondant à un produit, ou None
     si aucune image n'est disponible pour ce produit."""
-    name_lower = product_name.strip().lower()
+    # Nom normalisé : minuscules, « œ » → « oe », accents retirés, pour que
+    # « ŒUFS », « Œufs de table » ou « Oeufs extra » trouvent la même photo.
+    name_lower = _sans_accents(product_name.strip().lower().replace("œ", "oe"))
     for key, path in PRODUCT_IMAGES.items():
+        key = _sans_accents(key)
         # Le nom doit commencer par la clé suivie d'une fin de mot : « Ail »
         # ou « Ail violet » ont la photo de l'ail, mais pas « Ailes de poulet ».
         if name_lower.startswith(key) and not name_lower[len(key):len(key) + 1].isalpha():
