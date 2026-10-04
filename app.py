@@ -30,6 +30,16 @@ PRODUCT_IMAGES = {
     "gingembre": "img/products/gingembre.jpg",
     "niebe": "img/products/niebe.jpg",
     "niébé": "img/products/niebe.jpg",
+    "riz": "img/products/riz.jpg",
+    "huile": "img/products/huile.jpg",
+    "oignon": "img/products/oignon.jpg",
+    "pomme de terre": "img/products/pomme_de_terre.jpg",
+    "pommes de terre": "img/products/pomme_de_terre.jpg",
+    "ail": "img/products/ail.jpg",
+    "pack eau": "img/products/eau_minerale.jpg",
+    "pack d'eau": "img/products/eau_minerale.jpg",
+    "eau minerale": "img/products/eau_minerale.jpg",
+    "eau minérale": "img/products/eau_minerale.jpg",
 }
 
 
@@ -38,7 +48,9 @@ def _product_image(product_name):
     si aucune image n'est disponible pour ce produit."""
     name_lower = product_name.strip().lower()
     for key, path in PRODUCT_IMAGES.items():
-        if name_lower.startswith(key):
+        # Le nom doit commencer par la clé suivie d'une fin de mot : « Ail »
+        # ou « Ail violet » ont la photo de l'ail, mais pas « Ailes de poulet ».
+        if name_lower.startswith(key) and not name_lower[len(key):len(key) + 1].isalpha():
             return url_for("static", filename=path)
     return None
 
