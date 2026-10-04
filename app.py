@@ -11,7 +11,7 @@ from flask import (
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user
 )
-from sqlalchemy import func, inspect, text
+from sqlalchemy import case, func, inspect, text
 
 from models import db, User, Partner, Product, Transaction, Expense, Sale, Order, Loss, OrderGroup, DeliveryTier, SupplierPayment, CapitalSettings, CapitalSnapshot
 
@@ -53,6 +53,21 @@ PRODUCT_IMAGES = {
 }
 
 
+def _ordre_produits():
+    """Ordre d'affichage des produits : la volaille (œufs, poulets de chair,
+    découpe de poulet) en premier, puis les autres par ordre alphabétique."""
+    nom = func.lower(Product.name)
+    rang = case(
+        (nom.like("oeuf%"), 0), (nom.like("œuf%"), 0),
+        (nom.like("poulet%"), 1),
+        (nom.like("découpe%"), 2), (nom.like("decoupe%"), 2),
+        # SQLite ne met pas les lettres accentuées en minuscules
+        (Product.name.like("DÉCOUPE%"), 2), (Product.name.like("Découpe%"), 2),
+        else_=3,
+    )
+    return (rang, Product.name)
+
+
 def _product_image(product_name):
     """Retourne l'URL statique de l'image correspondant à un produit, ou None
     si aucune image n'est disponible pour ce produit."""
@@ -63,6 +78,8 @@ def _product_image(product_name):
         if name_lower.startswith(key) and not name_lower[len(key):len(key) + 1].isalpha():
             return url_for("static", filename=path)
     return None
+
+PRODUITS_ORDRE = _ordre_produits()
 
 # Coordonnées de l'entreprise affichées sur les factures et sur le site public.
 COMPANY_INFO = {
@@ -474,7 +491,7 @@ def commander():
     produits = [
         p for p in (
             Product.query.filter(Product.prix_vente_defaut > 0, Product.actif.is_(True))
-            .order_by(Product.name)
+            .order_by(*PRODUITS_ORDRE)
             .all()
         )
         if not p.name.lower().startswith("oeufs de table") or p.name in CALIBRES_OEUFS_AUTORISES
@@ -790,7 +807,7 @@ def dashboard():
     marge_mois = ventes_mois - cout_vendus_mois
     marge_jour = ventes_jour - cout_vendus_jour
 
-    produits = Product.query.order_by(Product.name).all()
+    produits = Product.query.order_by(*PRODUITS_ORDRE).all()
     dernieres_transactions = (
         Transaction.query.order_by(Transaction.created_at.desc()).limit(8).all()
     )
@@ -924,7 +941,7 @@ def ventes():
         transactions=transactions,
         quantite_totale=sum(t.quantity for t in transactions),
         total_montant=sum(t.total for t in transactions),
-        produits=Product.query.order_by(Product.name).all(),
+        produits=Product.query.order_by(*PRODUITS_ORDRE).all(),
         partenaires=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
         today=date.today().isoformat(),
     )
@@ -944,7 +961,7 @@ def achats():
         transactions=transactions,
         quantite_totale=sum(t.quantity for t in transactions),
         total_montant=sum(t.total for t in transactions),
-        produits=Product.query.order_by(Product.name).all(),
+        produits=Product.query.order_by(*PRODUITS_ORDRE).all(),
         partenaires=Partner.query.filter_by(type="fournisseur").order_by(Partner.name).all(),
         today=date.today().isoformat(),
     )
@@ -1236,7 +1253,7 @@ def nouvelle_vente():
 
     return render_template(
         "vente_nouvelle.html",
-        produits=Product.query.order_by(Product.name).all(),
+        produits=Product.query.order_by(*PRODUITS_ORDRE).all(),
         clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
         today=date.today().isoformat(),
     )
@@ -1354,7 +1371,7 @@ def commandes():
         q = q.filter_by(status=statut_filtre)
     liste = q.order_by(Order.date.desc(), Order.created_at.desc()).all()
 
-    produits = Product.query.order_by(Product.name).all()
+    produits = Product.query.order_by(*PRODUITS_ORDRE).all()
     disponibilites = {p.id: _stock_disponible(p) for p in produits}
 
     return render_template(
@@ -1781,7 +1798,7 @@ def produits():
             flash(f"Produit « {name} » ajouté.", "success")
         return redirect(url_for("produits"))
 
-    tous = Product.query.order_by(Product.name).all()
+    tous = Product.query.order_by(*PRODUITS_ORDRE).all()
     return render_template(
         "produits.html",
         liste=[p for p in tous if p.actif],
@@ -2054,7 +2071,7 @@ def pertes():
         "pertes.html",
         liste=liste,
         raisons=RAISONS_PERTE,
-        produits=Product.query.order_by(Product.name).all(),
+        produits=Product.query.order_by(*PRODUITS_ORDRE).all(),
         valeur_totale=valeur_totale,
         today=date.today().isoformat(),
     )
@@ -2164,7 +2181,7 @@ def stock():
         return redirect(url_for("stock"))
 
     # Les produits retirés n'apparaissent que s'il leur reste du stock.
-    produits = [p for p in Product.query.order_by(Product.name).all() if p.actif or p.stock]
+    produits = [p for p in Product.query.order_by(*PRODUITS_ORDRE).all() if p.actif or p.stock]
     return render_template("stock.html", produits=produits)
 
 
@@ -2512,7 +2529,7 @@ def _calcule_evolution(capital_actuel, reference):
 @app.route("/capital")
 @login_required
 def capital():
-    produits = Product.query.order_by(Product.name).all()
+    produits = Product.query.order_by(*PRODUITS_ORDRE).all()
     stock_detail = [
         {"produit": p, "valeur": (p.stock or 0) * (p.prix_achat_defaut or 0)}
         for p in produits

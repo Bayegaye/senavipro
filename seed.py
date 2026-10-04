@@ -71,16 +71,25 @@ def ensure_seed_data(verbose=False):
     # nom : l'administrateur peut ainsi le renommer ou le retirer depuis la
     # page Produits sans qu'il soit recréé au prochain démarrage.
     for name, unit, seuil, prix_vente, prix_achat in DEFAULT_PRODUCTS:
-        if Product.query.filter_by(seed_key=name).first():
+        nom_affiche = name.upper()
+        par_cle = Product.query.filter_by(seed_key=name).first()
+        if par_cle:
+            # Passage en majuscules des produits d'origine, seulement s'ils
+            # portent encore leur nom par défaut (un nom choisi par
+            # l'administrateur n'est jamais modifié).
+            if par_cle.name == name and name != nom_affiche:
+                par_cle.name = nom_affiche
             continue
         # Même nom à la casse près (« Bissap » saisi à la main = « BISSAP ») :
         # on réutilise le produit existant au lieu de créer un doublon.
         existant = Product.query.filter(db.func.lower(Product.name) == name.lower()).first()
         if existant:
             existant.seed_key = name  # base déjà en service : on marque le produit
+            if existant.name == name and name != nom_affiche:
+                existant.name = nom_affiche
             continue
         db.session.add(Product(
-            name=name, unit=unit, stock=0, seuil_alerte=seuil,
+            name=nom_affiche, unit=unit, stock=0, seuil_alerte=seuil,
             prix_vente_defaut=prix_vente, prix_achat_defaut=prix_achat,
             seed_key=name,
         ))
