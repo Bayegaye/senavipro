@@ -1347,6 +1347,176 @@ def facture_frais_livraison(sid):
     return redirect(url_for("facture_detail", sid=sid))
 
 
+# ---------- Réajustement d'une vente (changement d'avis du client à la livraison) ----------
+
+def _commande_liee(vente):
+    return OrderGroup.query.filter_by(sale_id=vente.id).first()
+
+
+@app.route("/factures/<int:sid>/ajuster", methods=["GET", "POST"])
+@login_required
+@admin_required
+def ajuster_vente(sid):
+    """L'administrateur réajuste une vente déjà facturée : quantités en plus ou
+    en moins (0 = produit retiré), ajout d'un produit, frais de livraison.
+    Le stock suit exactement l'écart : une baisse remet la différence en
+    stock, une hausse la retire (refusée si le stock disponible ne suffit pas).
+    L'annulation complète est traitée par annuler_vente."""
+    vente = db.session.get(Sale, sid)
+    if not vente:
+        abort(404)
+    lignes = vente.lignes.all()
+    commande = _commande_liee(vente)
+    if request.method == "GET":
+        return render_template(
+            "vente_ajuster.html", vente=vente, lignes=lignes, commande=commande,
+            produits=Product.query.filter_by(actif=True).order_by(*PRODUITS_ORDRE).all(),
+            tarif_livraison=_tarif_livraison(1),
+        )
+
+    retour = url_for("ajuster_vente", sid=sid)
+    motif = request.form.get("motif", "").strip()[:120]
+    # 1. Lecture et contrôle de tout le formulaire avant toute modification
+    try:
+        nouvelles_qtes = {l.id: _parse_decimal(request.form.get(f"qte_{l.id}", str(l.quantity)) or "0") for l in lignes}
+        nouveaux_prix = {l.id: _parse_decimal(request.form.get(f"prix_{l.id}", str(l.unit_price)) or "0") for l in lignes}
+        ajouts = []
+        for pid, q, pu in zip(request.form.getlist("ajout_produit[]"), request.form.getlist("ajout_qte[]"), request.form.getlist("ajout_prix[]")):
+            if not pid or not (q or "").strip():
+                continue
+            q, pu = _parse_decimal(q), _parse_decimal(pu or "0")
+            if q > 0:
+                ajouts.append((int(pid), q, pu))
+        frais = _parse_decimal(request.form.get("frais_livraison") or "0")
+    except (ValueError, TypeError):
+        flash("Formulaire invalide : vérifiez les quantités et les prix.", "danger")
+        return redirect(retour)
+    if any(q < 0 for q in nouvelles_qtes.values()) or any(p < 0 for p in nouveaux_prix.values()) or frais < 0:
+        flash("Les quantités, prix et frais ne peuvent pas être négatifs.", "danger")
+        return redirect(retour)
+
+    # 2. Besoin net de stock par produit (hausse = besoin, baisse = retour)
+    besoin = {}
+    for l in lignes:
+        besoin[l.product_id] = besoin.get(l.product_id, 0) + (nouvelles_qtes[l.id] - l.quantity)
+    for pid, q, _ in ajouts:
+        besoin[pid] = besoin.get(pid, 0) + q
+    produits = {p.id: p for p in Product.query.filter(Product.id.in_(list(besoin) or [0])).all()}
+    for pid, b in besoin.items():
+        prod = produits.get(pid)
+        if prod is None:
+            flash("Produit introuvable.", "danger")
+            return redirect(retour)
+        if b > 0 and prod.stock < b:
+            flash(f"Stock insuffisant pour {prod.name} : il faut {b:g} {prod.unit} de plus, "
+                  f"disponible {prod.stock:g}.", "danger")
+            return redirect(retour)
+    restantes = [l for l in lignes if nouvelles_qtes[l.id] > 0]
+    if not restantes and not ajouts:
+        flash("Tous les produits seraient retirés : utilisez plutôt « Annuler toute la vente ».", "warning")
+        return redirect(retour)
+
+    # 3. Application : stock, lignes, facture, commande liée
+    trace = []
+    for l in lignes:
+        q, pu = nouvelles_qtes[l.id], nouveaux_prix[l.id]
+        if q == l.quantity and pu == l.unit_price:
+            continue
+        prod = produits[l.product_id]
+        prod.stock -= (q - l.quantity)
+        nom = prod.name
+        if q == 0:
+            trace.append(f"{nom} retiré ({l.quantity:g} remis en stock)")
+            db.session.delete(l)
+            continue
+        if q != l.quantity:
+            trace.append(f"{nom} : {l.quantity:g} → {q:g}")
+        if pu != l.unit_price:
+            trace.append(f"{nom} : prix {l.unit_price:g} → {pu:g}")
+        l.quantity, l.unit_price, l.total = q, pu, q * pu
+    for pid, q, pu in ajouts:
+        prod = produits[pid]
+        prod.stock -= q
+        db.session.add(Transaction(
+            type="vente", product_id=pid, partner_id=vente.partner_id, sale_id=vente.id,
+            quantity=q, unit_price=pu, total=q * pu, date=vente.date,
+            note="Ajouté lors du réajustement de la facture " + vente.numero, user_id=current_user.id,
+        ))
+        trace.append(f"{prod.name} ajouté ({q:g})")
+    if frais != (vente.frais_livraison or 0):
+        trace.append(f"livraison {vente.frais_livraison or 0:g} → {frais:g} FCFA")
+        vente.frais_livraison = frais
+    db.session.flush()
+    vente.total = sum(t.total for t in vente.lignes.all())
+    if commande:
+        # Les lignes de la commande en ligne suivent la facture réajustée
+        # (affichage de la page Livraisons).
+        par_produit = {}
+        for t in vente.lignes.all():
+            q, tot = par_produit.get(t.product_id, (0, 0))
+            par_produit[t.product_id] = (q + t.quantity, tot + t.total)
+        vus = set()
+        for o in commande.lignes.all():
+            if o.product_id in par_produit and o.product_id not in vus:
+                q, tot = par_produit[o.product_id]
+                o.quantity, o.total, o.unit_price = q, tot, (tot / q if q else o.unit_price)
+                o.status = "confirmee"
+                vus.add(o.product_id)
+            else:
+                o.status = "annulee"
+                o.quantity, o.total = 0, 0
+        for pid, (q, tot) in par_produit.items():
+            if pid not in vus:
+                db.session.add(Order(
+                    client_id=commande.client_id, product_id=pid, quantity=q, unit_price=tot / q if q else 0,
+                    total=tot, status="confirmee", date=date.today(), date_confirmation=date.today(),
+                    note="Ajouté à la livraison", user_id=current_user.id, order_group_id=commande.id,
+                ))
+        commande.total_produits = vente.total
+        commande.delivery_fee = vente.frais_livraison
+        commande.total = vente.total_a_payer
+        if trace:
+            note = f"Réajustée le {date.today().strftime('%d/%m/%Y')} : " + " ; ".join(trace) + (f" ({motif})" if motif else "")
+            commande.note = note[:256]
+    db.session.commit()
+    if trace:
+        flash("Vente réajustée et stock mis à jour : " + " ; ".join(trace) + ".", "success")
+    else:
+        flash("Aucun changement.", "info")
+    return redirect(url_for("facture_detail", sid=sid))
+
+
+@app.route("/factures/<int:sid>/annuler", methods=["POST"])
+@login_required
+@admin_required
+def annuler_vente(sid):
+    """Annulation complète d'une vente au moment de la livraison : tout le stock
+    est restitué, la facture est supprimée et la commande en ligne liée (s'il y
+    en a une) passe au statut « annulée » avec le motif."""
+    vente = db.session.get(Sale, sid)
+    if not vente:
+        abort(404)
+    motif = request.form.get("motif", "").strip()[:120]
+    commande = _commande_liee(vente)
+    numero = vente.numero
+    for ligne in vente.lignes.all():
+        product = db.session.get(Product, ligne.product_id)
+        if product:
+            product.stock += ligne.quantity
+        db.session.delete(ligne)
+    if commande:
+        commande.status = "annulee"
+        commande.sale_id = None
+        commande.note = (f"Annulée à la livraison le {date.today().strftime('%d/%m/%Y')} (facture {numero})"
+                         + (f" : {motif}" if motif else ""))[:256]
+        for o in commande.lignes.all():
+            o.status = "annulee"
+    db.session.delete(vente)
+    db.session.commit()
+    flash(f"Vente {numero} annulée : tout le stock a été restitué.", "info")
+    return redirect(url_for("livraisons") if commande else url_for("factures"))
+
+
 @app.route("/factures/<int:sid>/supprimer", methods=["POST"])
 @login_required
 @admin_required

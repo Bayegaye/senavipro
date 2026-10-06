@@ -16,6 +16,7 @@
     </form>
     {% endif %}
     {% if current_user.is_admin %}
+    <a href="{{ url_for('ajuster_vente', sid=vente.id) }}" class="btn btn-warning btn-sm">Réajuster / annuler la vente</a>
     <form method="POST" action="{{ url_for('supprimer_facture', sid=vente.id) }}" onsubmit="return confirm('Supprimer cette facture ? Le stock des produits sera restitué.');">
       <button class="btn btn-outline-danger btn-sm">Supprimer</button>
     </form>

@@ -62,7 +62,7 @@
     <table class="table table-sm mb-0">
       <thead><tr class="small text-muted"><th>Produit</th><th class="text-center">Qté</th><th class="text-end">Total</th></tr></thead>
       <tbody>
-        {% for l in lignes %}
+        {% for l in lignes if l.status != 'annulee' or g.status == 'annulee' %}
         <tr>
           <td>{{ l.product.name if l.product else '—' }}</td>
           <td class="text-center">{{ '%.0f'|format(l.quantity) }}</td>
@@ -94,6 +94,9 @@
     {% endif %}
     {% if g.sale_id %}
     <a href="{{ url_for('facture_detail', sid=g.sale_id) }}" target="_blank" class="btn btn-sm btn-outline-primary">Voir la facture</a>
+    {% if current_user.is_admin %}
+    <a href="{{ url_for('ajuster_vente', sid=g.sale_id) }}" class="btn btn-sm btn-outline-warning" title="Le client change d'avis : modifier les quantités ou annuler">Réajuster / annuler</a>
+    {% endif %}
     {% endif %}
   </div>
 </div>

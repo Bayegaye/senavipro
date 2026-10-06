@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% block title %}Réajuster la facture {{ vente.numero }}{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div>
+    <h3 class="mb-0">Réajuster la vente {{ vente.numero }}</h3>
+    <div class="text-muted small">
+      {{ vente.partner.name if vente.partner else 'Client non spécifié' }} · {{ vente.date.strftime('%d/%m/%Y') }}
+      {% if commande %} · commande en ligne {{ commande.numero }} ({{ commande.status|replace('_', ' ') }}){% endif %}
+    </div>
+  </div>
+  <a href="{{ url_for('facture_detail', sid=vente.id) }}" class="btn btn-outline-secondary btn-sm">← Retour à la facture</a>
+</div>
+
+<div class="alert alert-info small">
+  Le client change d'avis à la livraison ? Modifiez les quantités (mettez <strong>0</strong> pour retirer un produit),
+  ajoutez un produit ou ajustez les frais de livraison. <strong>Le stock est réajusté automatiquement</strong> :
+  une baisse remet la différence en stock, une hausse la retire du stock.
+</div>
+
+<form method="POST" class="card card-stat p-3 mb-3" id="form-ajuster">
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <thead>
+        <tr><th>Produit</th><th class="text-end">Commandé</th><th style="width:140px">Nouvelle quantité</th>
+            <th style="width:150px">Prix unitaire (FCFA)</th><th class="text-end">Stock dispo</th><th class="text-end">Sous-total</th></tr>
+      </thead>
+      <tbody>
+        {% for l in lignes %}
+        <tr class="ligne" data-stock="{{ l.product.stock if l.product else 0 }}" data-initial="{{ l.quantity }}">
+          <td>{{ l.product.name if l.product else '—' }}</td>
+          <td class="text-end text-muted">{{ '%g'|format(l.quantity) }} {{ l.product.unit if l.product else '' }}</td>
+          <td><input type="number" min="0" step="any" name="qte_{{ l.id }}" value="{{ '%g'|format(l.quantity) }}" class="form-control form-control-sm text-end qte" required></td>
+          <td><input type="number" min="0" step="any" name="prix_{{ l.id }}" value="{{ '%g'|format(l.unit_price) }}" class="form-control form-control-sm text-end prix" required></td>
+          <td class="text-end text-muted small">{{ '%g'|format(l.product.stock if l.product else 0) }}</td>
+          <td class="text-end sous-total">0</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tbody id="ajouts"></tbody>
+      <tfoot>
+        <tr><td colspan="6">
+          <button type="button" class="btn btn-outline-success btn-sm" id="btn-ajout">+ Ajouter un produit</button>
+        </td></tr>
+        <tr><th colspan="5" class="text-end fw-normal">Total produits</th><th class="text-end" id="total-produits">0</th></tr>
+        <tr>
+          <th colspan="4" class="text-end fw-normal">Frais de livraison (FCFA)
+            <button type="button" class="btn btn-link btn-sm p-0" onclick="document.getElementById('frais').value='{{ '%.0f'|format(tarif_livraison) }}';recalc()">tarif : {{ '%.0f'|format(tarif_livraison) }}</button>
+          </th>
+          <th colspan="2"><input type="number" min="0" step="any" id="frais" name="frais_livraison" value="{{ '%g'|format(vente.frais_livraison or 0) }}" class="form-control form-control-sm text-end"></th>
+        </tr>
+        <tr><th colspan="5" class="text-end">Nouveau total à payer</th><th class="text-end" id="total-payer">0</th></tr>
+      </tfoot>
+    </table>
+  </div>
+  <div class="row g-2 align-items-end">
+    <div class="col-md-7">
+      <label class="form-label small mb-1">Motif (facultatif)</label>
+      <input type="text" name="motif" maxlength="120" class="form-control form-control-sm" placeholder="ex : le client ne prend que 2 plateaux">
+    </div>
+    <div class="col-md-5 text-md-end">
+      <button class="btn btn-success" type="submit" onclick="return confirm('Enregistrer le réajustement ? Le stock sera mis à jour.');">Enregistrer le réajustement</button>
+    </div>
+  </div>
+</form>
+
+<div class="card card-stat p-3 border-danger">
+  <h6 class="text-danger mb-2">Le client annule toute la commande</h6>
+  <form method="POST" action="{{ url_for('annuler_vente', sid=vente.id) }}" class="row g-2 align-items-end"
+        onsubmit="return confirm('Annuler toute la vente {{ vente.numero }} ? Tout le stock sera restitué et la facture supprimée.');">
+    <div class="col-md-7">
+      <label class="form-label small mb-1">Motif de l'annulation (facultatif)</label>
+      <input type="text" name="motif" maxlength="120" class="form-control form-control-sm" placeholder="ex : client absent, a changé d'avis">
+    </div>
+    <div class="col-md-5 text-md-end">
+      <button class="btn btn-outline-danger">Annuler toute la vente et restituer le stock</button>
+    </div>
+  </form>
+</div>
+
+<template id="modele-ajout">
+  <tr class="ligne ajout">
+    <td colspan="2">
+      <select name="ajout_produit[]" class="form-select form-select-sm produit">
+        <option value="">— Choisir un produit —</option>
+        {% for p in produits %}<option value="{{ p.id }}" data-prix="{{ p.prix_vente_defaut or 0 }}" data-stock="{{ p.stock }}">{{ p.name }} (stock : {{ '%g'|format(p.stock) }})</option>{% endfor %}
+      </select>
+    </td>
+    <td><input type="number" min="0" step="any" name="ajout_qte[]" class="form-control form-control-sm text-end qte" placeholder="0"></td>
+    <td><input type="number" min="0" step="any" name="ajout_prix[]" class="form-control form-control-sm text-end prix" placeholder="0"></td>
+    <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger retirer" title="Retirer">✕</button></td>
+    <td class="text-end sous-total">0</td>
+  </tr>
+</template>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function nb(v) { var n = parseFloat(String(v || '').replace(',', '.')); return isNaN(n) ? 0 : n; }
+function fmt(n) { return n.toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' FCFA'; }
+function recalc() {
+  var total = 0;
+  document.querySelectorAll('#form-ajuster tr.ligne').forEach(function (tr) {
+    var st = nb(tr.querySelector('.qte').value) * nb(tr.querySelector('.prix').value);
+    tr.querySelector('.sous-total').textContent = fmt(st);
+    total += st;
+    if (!tr.classList.contains('ajout')) {
+      var hausse = nb(tr.querySelector('.qte').value) - nb(tr.dataset.initial);
+      tr.classList.toggle('table-danger', hausse > nb(tr.dataset.stock));
+      tr.classList.toggle('table-warning', nb(tr.querySelector('.qte').value) === 0);
+    }
+  });
+  document.getElementById('total-produits').textContent = fmt(total);
+  document.getElementById('total-payer').textContent = fmt(total + nb(document.getElementById('frais').value));
+}
+document.addEventListener('DOMContentLoaded', function () {
+  var form = document.getElementById('form-ajuster');
+  form.addEventListener('input', recalc);
+  document.getElementById('btn-ajout').addEventListener('click', function () {
+    var tr = document.getElementById('modele-ajout').content.firstElementChild.cloneNode(true);
+    tr.querySelector('.produit').addEventListener('change', function () {
+      var o = this.selectedOptions[0]; tr.querySelector('.prix').value = o && o.dataset.prix ? Math.round(nb(o.dataset.prix)) : '';
+      recalc();
+    });
+    tr.querySelector('.retirer').addEventListener('click', function () { tr.remove(); recalc(); });
+    document.getElementById('ajouts').appendChild(tr);
+  });
+  recalc();
+});
+</script>
+{% endblock %}
