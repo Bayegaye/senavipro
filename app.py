@@ -1063,6 +1063,7 @@ def supprimer_transaction(tid):
         if lignes_restantes:
             vente.total = sum(l.total for l in lignes_restantes)
         else:
+            _detacher_vente(vente, "Facture vidée (dernier produit supprimé)")
             db.session.delete(vente)
     db.session.commit()
     flash("Transaction supprimée.", "info")
@@ -1347,6 +1348,24 @@ def facture_frais_livraison(sid):
     return redirect(url_for("facture_detail", sid=sid))
 
 
+def _detacher_vente(vente, motif):
+    """Avant de supprimer une facture : retire les références qui pointent
+    encore vers elle (commandes en ligne et commandes internes), sinon
+    PostgreSQL refuse la suppression (clé étrangère) et la page plante.
+    La commande en ligne liée passe en « annulée » puisque son stock est
+    restitué."""
+    for og in OrderGroup.query.filter_by(sale_id=vente.id).all():
+        og.sale_id = None
+        if og.status != "annulee":
+            og.status = "annulee"
+            og.note = (f"{motif} le {date.today().strftime('%d/%m/%Y')} (facture {vente.numero})")[:256]
+            for o in og.lignes.all():
+                o.status = "annulee"
+    for o in Order.query.filter_by(sale_id=vente.id).all():
+        o.sale_id = None
+    db.session.flush()
+
+
 # ---------- Réajustement d'une vente (changement d'avis du client à la livraison) ----------
 
 def _commande_liee(vente):
@@ -1511,6 +1530,7 @@ def annuler_vente(sid):
                          + (f" : {motif}" if motif else ""))[:256]
         for o in commande.lignes.all():
             o.status = "annulee"
+    _detacher_vente(vente, "Annulée à la livraison")
     db.session.delete(vente)
     db.session.commit()
     flash(f"Vente {numero} annulée : tout le stock a été restitué.", "info")
@@ -1529,6 +1549,7 @@ def supprimer_facture(sid):
         if product:
             product.stock += ligne.quantity
         db.session.delete(ligne)
+    _detacher_vente(vente, "Facture supprimée")
     db.session.delete(vente)
     db.session.commit()
     flash("Facture supprimée et stock restitué.", "info")
