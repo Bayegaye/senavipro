@@ -27,7 +27,7 @@
               ({{ v.lignes.all()|map(attribute='product.name')|join(', ') }})
             </span>
           </td>
-          <td class="text-end"><strong>{{ '%.0f'|format(v.total) }}</strong> FCFA</td>
+          <td class="text-end"><strong>{{ '%.0f'|format(v.total_a_payer) }}</strong> FCFA</td>
           <td class="text-muted small">{{ v.user.full_name if v.user else '' }}</td>
           {% if current_user.is_admin %}
           <td>

@@ -209,6 +209,18 @@ def _ensure_schema_upgrades():
     # Produits : retrait (archivage) et identifiant stable des produits par défaut
     _ensure_column(inspector, "products", "actif", "BOOLEAN NOT NULL DEFAULT TRUE")
     _ensure_column(inspector, "products", "seed_key", "VARCHAR(64)")
+    # Factures : frais de livraison
+    livraison_nouvelle = "sales" in inspector.get_table_names() and "frais_livraison" not in {
+        c["name"] for c in inspector.get_columns("sales")}
+    _ensure_column(inspector, "sales", "frais_livraison", "FLOAT NOT NULL DEFAULT 0")
+    if livraison_nouvelle and "order_groups" in inspector.get_table_names():
+        # Reprise : les factures issues d'une commande en ligne déjà confirmée
+        # récupèrent les frais de livraison de cette commande.
+        with db.engine.begin() as conn:
+            conn.execute(text(
+                "UPDATE sales SET frais_livraison = (SELECT og.delivery_fee FROM order_groups og "
+                "WHERE og.sale_id = sales.id) WHERE id IN (SELECT sale_id FROM order_groups WHERE sale_id IS NOT NULL)"
+            ))
 
 
 def _ensure_frais_livraison_fixe():
@@ -1232,11 +1244,17 @@ def nouvelle_vente():
                 return redirect(url_for("nouvelle_vente"))
 
         total = sum(l["quantity"] * l["unit_price"] for l in lignes)
+        try:
+            frais_livraison = max(0.0, float((request.form.get("frais_livraison") or "0").replace(" ", "").replace(",", ".")))
+        except ValueError:
+            flash("Frais de livraison invalides.", "danger")
+            return redirect(url_for("nouvelle_vente"))
 
         vente = Sale(
             numero=_next_sale_numero(),
             partner_id=int(partner_id) if partner_id else None,
             total=total,
+            frais_livraison=frais_livraison,
             date=vdate,
             user_id=current_user.id,
         )
@@ -1269,6 +1287,7 @@ def nouvelle_vente():
 
     return render_template(
         "vente_nouvelle.html",
+        tarif_livraison=_tarif_livraison(1),
         produits=Product.query.order_by(*PRODUITS_ORDRE).all(),
         clients=Partner.query.filter_by(type="client").order_by(Partner.name).all(),
         today=date.today().isoformat(),
@@ -1289,7 +1308,24 @@ def facture_detail(sid):
     if not vente:
         abort(404)
     lignes = vente.lignes.all()
-    return render_template("facture.html", vente=vente, lignes=lignes)
+    return render_template("facture.html", vente=vente, lignes=lignes, tarif_livraison=_tarif_livraison(1))
+
+
+@app.route("/factures/<int:sid>/livraison", methods=["POST"])
+@login_required
+def facture_frais_livraison(sid):
+    vente = db.session.get(Sale, sid)
+    if not vente:
+        abort(404)
+    try:
+        frais = float((request.form.get("frais_livraison") or "0").replace(" ", "").replace(",", "."))
+    except ValueError:
+        flash("Montant de livraison invalide.", "danger")
+        return redirect(url_for("facture_detail", sid=sid))
+    vente.frais_livraison = max(0.0, frais)
+    db.session.commit()
+    flash("Frais de livraison de la facture mis à jour.", "success")
+    return redirect(url_for("facture_detail", sid=sid))
 
 
 @app.route("/factures/<int:sid>/supprimer", methods=["POST"])
@@ -1634,6 +1670,7 @@ def confirmer_livraison(gid):
         numero=_next_sale_numero(),
         partner_id=og.client_id,
         total=og.total_produits,
+        frais_livraison=og.delivery_fee or 0,
         date=date.today(),
         user_id=current_user.id,
     )

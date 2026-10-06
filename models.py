@@ -105,10 +105,18 @@ class Sale(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     numero = db.Column(db.String(30), unique=True, nullable=False)
     partner_id = db.Column(db.Integer, db.ForeignKey("partners.id"), nullable=True)
-    total = db.Column(db.Float, nullable=False, default=0)
+    total = db.Column(db.Float, nullable=False, default=0)  # total des produits
+    # Frais de livraison facturés au client, en plus des produits. Ils ne
+    # sont pas comptés dans `total` (chiffre d'affaires produits), mais
+    # s'ajoutent au montant à payer affiché sur la facture.
+    frais_livraison = db.Column(db.Float, nullable=False, default=0)
     date = db.Column(db.Date, nullable=False, default=datetime.utcnow)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    @property
+    def total_a_payer(self):
+        return (self.total or 0) + (self.frais_livraison or 0)
 
     partner = db.relationship("Partner")
     user = db.relationship("User")

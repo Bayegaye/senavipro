@@ -45,8 +45,21 @@
         </tbody>
         <tfoot>
           <tr>
-            <th colspan="3" class="text-end">Total de la facture :</th>
-            <th class="text-end" id="total-facture">0 FCFA</th>
+            <th colspan="3" class="text-end fw-normal">Total produits :</th>
+            <th class="text-end fw-normal" id="total-facture">0 FCFA</th>
+            <th></th>
+          </tr>
+          <tr>
+            <th colspan="3" class="text-end fw-normal">
+              Frais de livraison (FCFA)
+              <button type="button" class="btn btn-link btn-sm p-0 ms-1" id="tarif-livraison" title="Appliquer le tarif de livraison">tarif : {{ '%.0f'|format(tarif_livraison) }}</button>
+            </th>
+            <th class="text-end"><input type="number" min="0" step="any" name="frais_livraison" id="frais-livraison" class="form-control form-control-sm text-end" value="0"></th>
+            <th></th>
+          </tr>
+          <tr>
+            <th colspan="3" class="text-end">Total à payer :</th>
+            <th class="text-end" id="total-a-payer">0 FCFA</th>
             <th></th>
           </tr>
         </tfoot>
@@ -94,6 +107,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   var template = document.getElementById('ligne-template');
   var totalEl = document.getElementById('total-facture');
+  document.getElementById('frais-livraison').addEventListener('input', recalcTotal);
 
   function recalcTotal() {
     var total = 0;
@@ -105,6 +119,8 @@ document.addEventListener('DOMContentLoaded', function () {
       total += sousTotal;
     });
     totalEl.textContent = total.toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' FCFA';
+    var frais = toNum(document.getElementById('frais-livraison').value);
+    document.getElementById('total-a-payer').textContent = (total + frais).toLocaleString('fr-FR', {maximumFractionDigits: 0}) + ' FCFA';
   }
 
   function ajouterLigne() {
@@ -147,6 +163,14 @@ document.addEventListener('DOMContentLoaded', function () {
       e.preventDefault();
       alert('Ajoutez au moins un produit avec une quantité à la facture.');
     }
+  });
+});
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var champ = document.getElementById('frais-livraison');
+  document.getElementById('tarif-livraison').addEventListener('click', function () {
+    champ.value = {{ '%.0f'|format(tarif_livraison) }}; champ.dispatchEvent(new Event('input', {bubbles: true}));
   });
 });
 </script>

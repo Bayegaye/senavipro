@@ -13,11 +13,11 @@
   </div>
 </div>
 
-<div class="card card-stat p-4">
-  <div class="row mb-4">
+<div class="card card-stat p-4 facture-feuille">
+  <div class="row mb-4 facture-entete">
     <div class="col-md-6">
       <div class="d-flex align-items-center gap-2 mb-2">
-        <img src="{{ url_for('static', filename='img/logo.jpg') }}" alt="{{ app_name }}" style="height:48px;width:48px;object-fit:cover;border-radius:6px;">
+        <img class="facture-logo" src="{{ url_for('static', filename='img/logo.jpg') }}" alt="{{ app_name }}" style="height:48px;width:48px;object-fit:cover;border-radius:6px;">
         <h5 class="mb-0">{{ app_name }}</h5>
       </div>
       <div class="text-muted small">{{ company_info.address }}</div>
@@ -38,7 +38,7 @@
   </div>
 
   <div class="table-responsive">
-    <table class="table table-hover align-middle">
+    <table class="table table-hover align-middle facture-table">
       <thead><tr><th>Produit</th><th class="text-end">Quantité</th><th class="text-end">Prix unitaire</th><th class="text-end">Total</th></tr></thead>
       <tbody>
         {% for ligne in lignes %}
@@ -51,9 +51,19 @@
         {% endfor %}
       </tbody>
       <tfoot>
+        {% if vente.frais_livraison %}
         <tr>
-          <th colspan="3" class="text-end">Total</th>
-          <th class="text-end">{{ '%.0f'|format(vente.total) }} FCFA</th>
+          <td colspan="3" class="text-end">Total produits</td>
+          <td class="text-end">{{ '%.0f'|format(vente.total) }} FCFA</td>
+        </tr>
+        <tr>
+          <td colspan="3" class="text-end">Frais de livraison</td>
+          <td class="text-end">{{ '%.0f'|format(vente.frais_livraison) }} FCFA</td>
+        </tr>
+        {% endif %}
+        <tr class="ligne-total">
+          <th colspan="3" class="text-end">{{ 'Total à payer' if vente.frais_livraison else 'Total' }}</th>
+          <th class="text-end">{{ '%.0f'|format(vente.total_a_payer) }} FCFA</th>
         </tr>
       </tfoot>
     </table>
@@ -67,9 +77,47 @@
   {% endif %}
 </div>
 
+<div class="card card-stat p-3 mt-3 no-print">
+  <form method="POST" action="{{ url_for('facture_frais_livraison', sid=vente.id) }}" class="row g-2 align-items-end">
+    <div class="col-sm-5 col-md-4">
+      <label class="form-label small mb-1" for="frais-liv">Frais de livraison facturés (FCFA)</label>
+      <input type="number" min="0" step="any" id="frais-liv" name="frais_livraison" class="form-control form-control-sm" value="{{ '%.0f'|format(vente.frais_livraison or 0) }}">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-success btn-sm" type="submit">Mettre à jour</button>
+      <button class="btn btn-link btn-sm" type="button" onclick="document.getElementById('frais-liv').value='{{ '%.0f'|format(tarif_livraison) }}'">Tarif : {{ '%.0f'|format(tarif_livraison) }} FCFA</button>
+    </div>
+    <div class="col-12 small text-muted">Mettez 0 si le client retire lui-même sa commande. La facture s'imprime sur une demi-page A4 (moitié haute, à découper).</div>
+  </form>
+</div>
+
 <style>
+.facture-table tfoot .ligne-total th { font-size: 1.05rem; }
 @media print {
-  .no-print, nav, footer { display: none !important; }
+  @page { size: A4 portrait; margin: 8mm 10mm; }
+  .no-print, nav, footer, .alert { display: none !important; }
+  html, body { background: #fff !important; }
+  main, .container, .container-fluid { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  /* Facture calée sur la moitié haute de la feuille A4 */
+  .facture-feuille {
+    box-shadow: none !important; border: 1px solid #999 !important; border-radius: 0 !important;
+    padding: 5mm 6mm !important; margin: 0 !important;
+    height: 136mm; max-height: 136mm; overflow: hidden;
+    font-size: 9pt; line-height: 1.25;
+    border-bottom: 1px dashed #666 !important;
+  }
+  .facture-feuille .facture-entete { margin-bottom: 3mm !important; }
+  .facture-feuille .facture-logo { height: 30px !important; width: 30px !important; }
+  .facture-feuille h5 { font-size: 11pt; }
+  .facture-feuille .small, .facture-feuille small { font-size: 8pt !important; }
+  .facture-feuille .facture-table { margin-bottom: 2mm; font-size: 8.5pt; }
+  .facture-feuille .facture-table th, .facture-feuille .facture-table td { padding: 1mm 1.5mm !important; }
+  .facture-feuille .facture-table tfoot .ligne-total th { font-size: 10pt; }
+  .facture-feuille .mt-3 { margin-top: 2mm !important; }
+  .facture-feuille .table-responsive { overflow: visible !important; }
+  .facture-feuille .row { display: flex; flex-wrap: nowrap; }
+  .facture-feuille .col-md-6 { width: 50%; flex: 0 0 50%; }
+  .facture-feuille .text-md-end { text-align: right !important; }
 }
 </style>
 {% endblock %}
