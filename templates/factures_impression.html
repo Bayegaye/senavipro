@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Impression de factures{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3 no-print">
+  <div>
+    <h3 class="mb-0">Impression : {{ factures|length }} facture{{ 's' if factures|length > 1 else '' }}</h3>
+    <div class="text-muted small">2 factures par feuille A4 (moitié haute et moitié basse, à découper) — {{ ((factures|length + 1) // 2) }} feuille{{ 's' if factures|length > 2 else '' }}.</div>
+  </div>
+  <div class="d-flex gap-2">
+    <button class="btn btn-success btn-sm" onclick="window.print()">Imprimer / PDF</button>
+    <a href="{{ url_for('factures') }}" class="btn btn-outline-secondary btn-sm">← Factures</a>
+  </div>
+</div>
+{% for vente, lignes in factures %}
+  {% include "_facture_corps.html" %}
+  {% if loop.index is divisibleby 2 and not loop.last %}<div class="saut-page"></div>{% endif %}
+{% endfor %}
+<style>
+@media screen { .facture-feuille { margin-bottom: 1.5rem; } }
+</style>
+{% include "_facture_print_css.html" %}
+{% endblock %}

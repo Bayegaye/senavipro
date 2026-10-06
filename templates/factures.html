@@ -3,14 +3,20 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h3>Factures</h3>
-  <a href="{{ url_for('nouvelle_vente') }}" class="btn btn-success btn-sm">+ Nouvelle facture</a>
+  <div class="d-flex gap-2">
+    <button type="submit" form="form-impression" class="btn btn-outline-secondary btn-sm" id="btn-imprimer" disabled>Imprimer la sélection (2 par feuille)</button>
+    <a href="{{ url_for('nouvelle_vente') }}" class="btn btn-success btn-sm">+ Nouvelle facture</a>
+  </div>
 </div>
 
+<form id="form-impression" method="GET" action="{{ url_for('imprimer_factures') }}"></form>
 <div class="card card-stat p-3">
+  <div class="small text-muted mb-2">Cochez les factures à imprimer : elles sont regroupées 2 par feuille A4 pour économiser le papier.</div>
   <div class="table-responsive">
     <table class="table table-sm table-hover">
       <thead>
         <tr>
+          <th style="width:30px"><input type="checkbox" class="form-check-input" id="tout-cocher" title="Tout cocher"></th>
           <th>N° facture</th><th>Date</th><th>Client</th><th>Produits</th><th class="text-end">Total</th><th>Par</th>
           {% if current_user.is_admin %}<th></th>{% endif %}
         </tr>
@@ -18,6 +24,7 @@
       <tbody>
         {% for v in liste %}
         <tr>
+          <td><input type="checkbox" class="form-check-input choix-facture" name="ids" value="{{ v.id }}" form="form-impression"></td>
           <td><a href="{{ url_for('facture_detail', sid=v.id) }}">{{ v.numero }}</a></td>
           <td>{{ v.date.strftime('%d/%m/%Y') }}</td>
           <td>{{ v.partner.name if v.partner else '—' }}</td>
@@ -38,10 +45,24 @@
           {% endif %}
         </tr>
         {% else %}
-        <tr><td colspan="{{ 7 if current_user.is_admin else 6 }}" class="text-muted">Aucune facture pour le moment.</td></tr>
+        <tr><td colspan="{{ 8 if current_user.is_admin else 7 }}" class="text-muted">Aucune facture pour le moment.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var cases = document.querySelectorAll('.choix-facture'), btn = document.getElementById('btn-imprimer');
+  function maj() {
+    var n = document.querySelectorAll('.choix-facture:checked').length;
+    btn.disabled = n === 0;
+    btn.textContent = n ? 'Imprimer ' + n + ' facture' + (n > 1 ? 's' : '') + ' (' + Math.ceil(n / 2) + ' feuille' + (n > 2 ? 's' : '') + ')' : 'Imprimer la sélection (2 par feuille)';
+  }
+  cases.forEach(function (c) { c.addEventListener('change', maj); });
+  document.getElementById('tout-cocher').addEventListener('change', function () {
+    var v = this.checked; cases.forEach(function (c) { c.checked = v; }); maj();
+  });
+});
+</script>
 {% endblock %}

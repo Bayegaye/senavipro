@@ -1,0 +1,32 @@
+<style>
+.facture-table tfoot .ligne-total th { font-size: 1.05rem; }
+@media print {
+  @page { size: A4 portrait; margin: 8mm 10mm; }
+  .no-print, nav, footer, .alert { display: none !important; }
+  html, body { background: #fff !important; }
+  main, .container, .container-fluid { padding: 0 !important; margin: 0 !important; max-width: none !important; }
+  /* Facture calée sur la moitié haute de la feuille A4 */
+  .facture-feuille {
+    box-shadow: none !important; border: 1px solid #999 !important; border-radius: 0 !important;
+    padding: 5mm 6mm !important; margin: 0 !important;
+    height: 136mm; max-height: 136mm; overflow: hidden; break-inside: avoid; page-break-inside: avoid;
+    font-size: 9pt; line-height: 1.25;
+    border-bottom: 1px dashed #666 !important;
+  }
+  .facture-feuille .facture-entete { margin-bottom: 3mm !important; }
+  .facture-feuille .facture-logo { height: 30px !important; width: 30px !important; }
+  .facture-feuille h5 { font-size: 11pt; }
+  .facture-feuille .small, .facture-feuille small { font-size: 8pt !important; }
+  .facture-feuille .facture-table { margin-bottom: 2mm; font-size: 8.5pt; }
+  .facture-feuille .facture-table th, .facture-feuille .facture-table td { padding: 1mm 1.5mm !important; }
+  .facture-feuille .facture-table tfoot .ligne-total th { font-size: 10pt; }
+  .facture-feuille .mt-3 { margin-top: 2mm !important; }
+  .facture-feuille .table-responsive { overflow: visible !important; }
+  .facture-feuille .row { display: flex; flex-wrap: nowrap; }
+  .facture-feuille .col-md-6 { width: 50%; flex: 0 0 50%; }
+  .facture-feuille .text-md-end { text-align: right !important; }
+  /* 2 factures par feuille : la 2e occupe la moitié basse */
+  .facture-feuille + .facture-feuille { margin-top: 9mm !important; }
+  .saut-page { break-after: page; page-break-after: always; height: 0; }
+}
+</style>

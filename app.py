@@ -1308,7 +1308,26 @@ def facture_detail(sid):
     if not vente:
         abort(404)
     lignes = vente.lignes.all()
-    return render_template("facture.html", vente=vente, lignes=lignes, tarif_livraison=_tarif_livraison(1))
+    autres = Sale.query.filter(Sale.id != vente.id).order_by(Sale.created_at.desc()).limit(30).all()
+    return render_template("facture.html", vente=vente, lignes=lignes, autres=autres,
+                           tarif_livraison=_tarif_livraison(1))
+
+
+@app.route("/factures/imprimer")
+@login_required
+def imprimer_factures():
+    """Impression groupée : 2 factures par feuille A4 (moitié haute / moitié basse)."""
+    ids = []
+    for brut in request.args.getlist("ids"):
+        for morceau in str(brut).split(","):
+            if morceau.strip().isdigit() and int(morceau) not in ids:
+                ids.append(int(morceau))
+    ventes = {v.id: v for v in Sale.query.filter(Sale.id.in_(ids)).all()} if ids else {}
+    factures_ = [(ventes[i], ventes[i].lignes.all()) for i in ids if i in ventes]
+    if not factures_:
+        flash("Sélectionnez au moins une facture à imprimer.", "warning")
+        return redirect(url_for("factures"))
+    return render_template("factures_impression.html", factures=factures_)
 
 
 @app.route("/factures/<int:sid>/livraison", methods=["POST"])
